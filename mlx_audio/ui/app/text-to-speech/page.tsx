@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, Upload } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { getApiUrl } from "@/utils/api"
+import { splitIntoChunks } from "@/utils/chunking"
 import { VoiceSelection } from "@/components/voice-selection"
 
 // Custom range input component with colored progress
@@ -49,8 +50,6 @@ function RangeInput({
   )
 }
 
-const MAX_CHUNK_CHARS = 500
-
 type AudioChunk = { blob: Blob; url: string; duration: number }
 
 const formatTime = (seconds: number) => {
@@ -58,51 +57,6 @@ const formatTime = (seconds: number) => {
   const m = Math.floor(total / 60)
   const sec = total % 60
   return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`
-}
-
-// Split text into chunks of roughly maxLen characters, preferring paragraph and
-// sentence boundaries. Single newlines (e.g. line wraps in PDFs) count as spaces.
-const splitIntoChunks = (raw: string, maxLen = MAX_CHUNK_CHARS): string[] => {
-  const chunks: string[] = []
-  let cur = ""
-  const flush = () => {
-    if (cur.trim()) chunks.push(cur.trim())
-    cur = ""
-  }
-
-  const paragraphs = raw
-    .replace(/\r/g, "")
-    .replace(/([A-Za-z])-\n(?=[a-z])/g, "$1")
-    .split(/\n\s*\n/)
-
-  for (const para of paragraphs) {
-    const clean = para.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim()
-    if (!clean) continue
-    const sentences = clean.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [clean]
-    for (const sentence of sentences.map((x) => x.trim()).filter(Boolean)) {
-      if (sentence.length > maxLen) {
-        // A single very long sentence: fall back to splitting on words.
-        flush()
-        let piece = ""
-        for (const word of sentence.split(" ")) {
-          if (piece && piece.length + word.length + 1 > maxLen) {
-            chunks.push(piece)
-            piece = word
-          } else {
-            piece = piece ? `${piece} ${word}` : word
-          }
-        }
-        cur = piece
-      } else if (cur && cur.length + sentence.length + 1 > maxLen) {
-        flush()
-        cur = sentence
-      } else {
-        cur = cur ? `${cur} ${sentence}` : sentence
-      }
-    }
-    flush()
-  }
-  return chunks
 }
 
 const getBlobDuration = (url: string) =>
@@ -343,7 +297,7 @@ export default function SpeechSynthesis() {
     }
   }
 
-  const buildSpeechBody = (input: string) => {
+  const buildSpeechBody = (input: string, pauseMs: number, narrationId: string) => {
     const lower = model.toLowerCase()
     const voice = model.includes("marvis")
       ? "conversational_a"
@@ -360,6 +314,17 @@ export default function SpeechSynthesis() {
       speed: speed,
       // WAV keeps chunk boundaries gapless and makes merging for download simple
       response_format: "wav",
+      // Make separately generated chunks sound like one narration: the server trims
+      // silence, caps long pauses, levels the volume, matches the pace of the first
+      // chunk (narration_id) and adds a fixed pause after the chunk.
+      trim_silence: true,
+      max_pause_ms: 500,
+      loudness_db: -20,
+      pause_ms: pauseMs,
+      narration_id: narrationId,
+      // The model sometimes fails to stop; bound how long a chunk can run (Qwen3 speaks
+      // about 12.5 tokens per second, roughly 1 token per character).
+      ...(lower.includes("qwen3") ? { max_tokens: Math.min(1200, Math.ceil(input.length * 1.6) + 40) } : {}),
       ...(lower.includes("qwen3") && instruction ? { instruct: instruction } : {}),
     }
   }
@@ -368,6 +333,7 @@ export default function SpeechSynthesis() {
     if (!audioRef.current || generatingRef.current) return
 
     const parts = splitIntoChunks(text)
+    const narrationId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
     if (parts.length === 0) {
       setMessage({ type: "error", text: "There is no text to convert to speech." })
       return
@@ -397,7 +363,7 @@ export default function SpeechSynthesis() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(buildSpeechBody(parts[i])),
+          body: JSON.stringify(buildSpeechBody(parts[i].text, parts[i].pauseMs, narrationId)),
           signal: controller.signal,
         })
 
