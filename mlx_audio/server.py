@@ -1019,6 +1019,52 @@ async def tts_voices(model: Optional[str] = None):
     }
 
 
+@app.post("/v1/documents/extract-text")
+async def extract_document_text(file: UploadFile = File(...)):
+    """Extract plain text from an uploaded PDF so it can be sent to TTS.
+
+    Only PDFs with a text layer are supported; scanned (image-only) PDFs
+    return a 422 because no OCR is performed.
+    """
+    try:
+        from pypdf import PdfReader
+        from pypdf.errors import PyPdfError
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="PDF support requires pypdf. Install it with: pip install pypdf",
+        )
+
+    data = await file.read()
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="Uploaded file is not a PDF.")
+
+    def _extract() -> tuple[str, int]:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            # Many PDFs are "encrypted" with an empty user password.
+            if not reader.decrypt(""):
+                raise HTTPException(
+                    status_code=400, detail="PDF is password protected."
+                )
+        pages = [(page.extract_text() or "").strip() for page in reader.pages]
+        return "\n\n".join(p for p in pages if p), len(pages)
+
+    try:
+        text, page_count = await asyncio.to_thread(_extract)
+    except HTTPException:
+        raise
+    except (PyPdfError, ValueError, KeyError, OSError) as e:
+        raise HTTPException(status_code=400, detail=f"Could not read PDF: {e}")
+
+    if not text:
+        raise HTTPException(
+            status_code=422,
+            detail="No text found in this PDF. It may be a scanned document (OCR is not supported).",
+        )
+    return {"text": text, "pages": page_count, "filename": file.filename}
+
+
 @app.post("/v1/audio/transcriptions")
 async def stt_transcriptions(
     request: Request,

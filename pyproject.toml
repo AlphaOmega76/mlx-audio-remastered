@@ -47,6 +47,7 @@ server = [
     "fastapi>=0.95.0",
     "uvicorn[standard]>=0.22.0",
     "python-multipart>=0.0.22",
+    "pypdf>=5.0.0",
     "webrtcvad>=2.0.10",
     "setuptools<81", # pinned because >=81 drops pkg_resources which breaks webrtcvad
 ]
