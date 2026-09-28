@@ -125,7 +125,7 @@ export default function SpeechSynthesis() {
   const [speed, setSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState("00:00")
   const [duration, setDuration] = useState("00:00")
-  const [baseModel, setBaseModel] = useState("mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16")
+  const [baseModel, setBaseModel] = useState("mlx-community/Kokoro-82M-bf16")
   const [quantization, setQuantization] = useState("6bit")
   const [selectedVoice, setSelectedVoice] = useState("ryan")
   const [instruction, setInstruction] = useState("calm, measured narrator tone")

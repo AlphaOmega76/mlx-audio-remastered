@@ -1,5 +1,7 @@
 // Settings shared by the popup, options page, background worker and player.
 
+// Tried the 4-bit build (2026-09-28) to cut generation time (it is roughly 2x faster than
+// bf16 here), but its output was unintelligible for the user, so back to bf16.
 export const QWEN3_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16"
 
 // Same models and voices the MLX-Audio web app offers by default.
@@ -19,10 +21,12 @@ export const MODELS = [
   },
 ]
 
+// Kokoro sounded better and more consistent than Qwen3 to the user (2026-09-28), so it is
+// the default for now. Qwen3 is still selectable from the options page.
 export const DEFAULTS = {
   serverUrl: "http://localhost:8000",
-  model: QWEN3_MODEL,
-  voice: "ryan",
+  model: "mlx-community/Kokoro-82M-bf16",
+  voice: "af_heart",
   instruction: "calm, measured narrator tone",
   speed: 1,
 }
