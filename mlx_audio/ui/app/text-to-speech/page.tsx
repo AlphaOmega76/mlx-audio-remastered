@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { ChevronDown, Download, ThumbsUp, ThumbsDown, Play, Pause, RefreshCw, Square, Upload } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, Upload } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { VoiceSelection } from "@/components/voice-selection"
 
@@ -168,18 +168,14 @@ export default function SpeechSynthesis() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [speed, setSpeed] = useState(1)
-  const [pitch, setPitch] = useState(0)
-  const [volume, setVolume] = useState(1)
   const [currentTime, setCurrentTime] = useState("00:00")
   const [duration, setDuration] = useState("00:04")
-  const [activeTab, setActiveTab] = useState<"settings" | "history">("settings")
   const [baseModel, setBaseModel] = useState("mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16")
   const [quantization, setQuantization] = useState("6bit")
-  const [language, setLanguage] = useState("English-detected")
-  const [liked, setLiked] = useState<boolean | null>(null)
   const [selectedVoice, setSelectedVoice] = useState("ryan")
   const [instruction, setInstruction] = useState("calm, measured narrator tone")
 
+  const [settingsOpen, setSettingsOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const [pdfName, setPdfName] = useState<string | null>(null)
@@ -591,10 +587,6 @@ export default function SpeechSynthesis() {
     }
   }
 
-  const handleFeedback = (isPositive: boolean) => {
-    setLiked(isPositive)
-  }
-
   const getCharacterCount = () => {
     return text.length
   }
@@ -655,12 +647,6 @@ export default function SpeechSynthesis() {
           </div>
           <div className="mt-4 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="relative">
-                <button className="flex items-center space-x-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <span>{language}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </div>
               <button
                 className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
                 onClick={handleDownload}
@@ -699,24 +685,26 @@ export default function SpeechSynthesis() {
         </div>
 
         {/* Settings Panel */}
-        <div className="w-80 overflow-auto p-4 bg-white dark:bg-gray-900">
-          <div className="mb-4 flex space-x-4 border-b border-gray-200 dark:border-gray-700 pb-2">
-            <button
-              className={`pb-2 text-sm ${activeTab === "settings" ? "border-b-2 border-black dark:border-white font-medium" : "text-gray-500 dark:text-gray-400"}`}
-              onClick={() => setActiveTab("settings")}
-            >
-              Settings
-            </button>
-            <button
-              className={`pb-2 text-sm ${activeTab === "history" ? "border-b-2 border-black dark:border-white font-medium" : "text-gray-500 dark:text-gray-400"}`}
-              onClick={() => setActiveTab("history")}
-            >
-              History
-            </button>
-          </div>
-
-          {activeTab === "settings" ? (
-            <>
+        <div className="relative shrink-0">
+        <button
+          className={`absolute left-0 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-transform duration-200 ${
+            settingsOpen ? "-translate-x-1/2" : "-translate-x-full"
+          }`}
+          onClick={() => setSettingsOpen((open) => !open)}
+          aria-label={settingsOpen ? "Hide settings panel" : "Show settings panel"}
+          aria-expanded={settingsOpen}
+          title={settingsOpen ? "Hide settings" : "Show settings"}
+        >
+          {settingsOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
+        <div
+          className={`h-full overflow-hidden bg-white dark:bg-gray-900 transition-[width,visibility] duration-200 ease-in-out ${
+            settingsOpen ? "w-80" : "invisible w-0"
+          }`}
+          aria-hidden={!settingsOpen}
+        >
+          <div className="h-full w-80 overflow-auto p-4">
+          <>
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm">Model</span>
@@ -843,94 +831,9 @@ export default function SpeechSynthesis() {
                   <span className="text-xs text-gray-500 ml-2">Fast</span>
                 </div>
               </div>
-
-              <div className="mb-6">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm">Pitch</span>
-                  <div className="flex items-center">
-                    <div className="flex space-x-2 mr-2">
-                      <button
-                        onClick={() => setPitch(-5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === -5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Low
-                      </button>
-                      <button
-                        onClick={() => setPitch(0)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === 0 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Normal
-                      </button>
-                      <button
-                        onClick={() => setPitch(5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === 5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        High
-                      </button>
-                    </div>
-                    <span className="text-sm font-medium">{pitch}</span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 mr-2">-10</span>
-                  <RangeInput
-                    min={-10}
-                    max={10}
-                    step={1}
-                    value={pitch}
-                    onChange={(e) => setPitch(Number.parseInt(e.target.value))}
-                    ariaLabel="Pitch control"
-                  />
-                  <span className="text-xs text-gray-500 ml-2">+10</span>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm">Volume</span>
-                  <div className="flex items-center">
-                    <div className="flex space-x-2 mr-2">
-                      <button
-                        onClick={() => setVolume(0.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 0.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Quiet
-                      </button>
-                      <button
-                        onClick={() => setVolume(1)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 1 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Normal
-                      </button>
-                      <button
-                        onClick={() => setVolume(1.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 1.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Loud
-                      </button>
-                    </div>
-                    <span className="text-sm font-medium">{volume}x</span>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 mr-2">0</span>
-                  <RangeInput
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    value={volume}
-                    onChange={(e) => setVolume(Number.parseFloat(e.target.value))}
-                    ariaLabel="Volume control"
-                  />
-                  <span className="text-xs text-gray-500 ml-2">2</span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>No history available</p>
-            </div>
-          )}
+          </>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -950,23 +853,6 @@ export default function SpeechSynthesis() {
                 {selectedVoice}: {text.length > 20 ? text.substring(0, 20) + "..." : text}
               </div>
               <div className="flex items-center space-x-2">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mr-2">How did this sound?</div>
-                <button
-                  className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  onClick={() => handleFeedback(true)}
-                >
-                  <ThumbsUp
-                    className={`h-4 w-4 ${liked === true ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`}
-                  />
-                </button>
-                <button
-                  className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  onClick={() => handleFeedback(false)}
-                >
-                  <ThumbsDown
-                    className={`h-4 w-4 ${liked === false ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`}
-                  />
-                </button>
                 <button
                   className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
                   onClick={handleDownload}

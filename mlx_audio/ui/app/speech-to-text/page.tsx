@@ -197,6 +197,46 @@ export default function SpeechToTextPage() {
     }
   }
 
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  // Full transcript text saved in localStorage for a file ("" if there is none)
+  const getTranscriptText = (id: string): string => {
+    if (typeof window === "undefined") return ""
+    try {
+      const raw = localStorage.getItem(`mlx-audio-transcription-${id}`)
+      if (!raw) return ""
+      const data = JSON.parse(raw) as { text?: string; segments?: Array<{ text: string }> }
+      return (data.text || data.segments?.map((seg) => seg.text).join(" ") || "").trim()
+    } catch {
+      return ""
+    }
+  }
+
+  const downloadTranscript = (file: TranscriptionFile) => {
+    const text = getTranscriptText(file.id)
+    if (!text) return
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${file.name.replace(/\.[^./\\]+$/, "")}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+
+  const copyTranscript = async (id: string) => {
+    const text = getTranscriptText(id)
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1500)
+    } catch (error) {
+      console.error("Could not copy transcript:", error)
+    }
+  }
+
   const deleteFile = (id: string) => {
     setFiles(files.filter((file) => file.id !== id))
     localStorage.removeItem(`mlx-audio-transcription-${id}`)
@@ -273,13 +313,19 @@ export default function SpeechToTextPage() {
                       </button>
                       <div className="absolute right-0 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 hidden group-hover:block z-10">
                         <div className="py-1">
-                          {file.status === "completed" && (
+                          {file.status === "completed" && getTranscriptText(file.id) && (
                             <>
-                              <button className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                              <button
+                                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                onClick={() => downloadTranscript(file)}
+                              >
                                 Download transcript
                               </button>
-                              <button className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
-                                Copy to clipboard
+                              <button
+                                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                onClick={() => copyTranscript(file.id)}
+                              >
+                                {copiedId === file.id ? "Copied!" : "Copy to clipboard"}
                               </button>
                             </>
                           )}
