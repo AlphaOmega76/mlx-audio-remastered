@@ -14,7 +14,7 @@ export function Navbar({ activeTab = "audio", activePage = "home" }: NavbarProps
     <header className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-2">
       <div className="flex items-center space-x-3">
         <NavMenu activePage={activePage} />
-        <Link href="/home" className="flex items-center">
+        <Link href="/" className="flex items-center">
           <div className="mr-2 h-5 w-5">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="stroke-current">
               <path d="M9 18V5l12-2v13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

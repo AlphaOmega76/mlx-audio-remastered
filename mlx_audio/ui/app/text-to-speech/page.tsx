@@ -165,12 +165,12 @@ const mergeToWav = async (blobs: Blob[]): Promise<Blob> => {
 }
 
 export default function SpeechSynthesis() {
-  const [text, setText] = useState("But I also have other interests, such as playing tic-tac-toe.")
+  const [text, setText] = useState("")
   const [isPlaying, setIsPlaying] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState("00:00")
-  const [duration, setDuration] = useState("00:04")
+  const [duration, setDuration] = useState("00:00")
   const [baseModel, setBaseModel] = useState("mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16")
   const [quantization, setQuantization] = useState("6bit")
   const [selectedVoice, setSelectedVoice] = useState("ryan")
@@ -845,7 +845,7 @@ export default function SpeechSynthesis() {
           <div className="flex flex-col justify-between h-full flex-1 px-4 py-2">
             <div className="flex items-center justify-between w-full">
               <div className="text-sm">
-                {selectedVoice}: {text.length > 20 ? text.substring(0, 20) + "..." : text}
+                {text.trim() ? `${selectedVoice}: ${text.length > 20 ? text.substring(0, 20) + "..." : text}` : selectedVoice}
               </div>
               <div className="flex items-center space-x-2">
                 <button
