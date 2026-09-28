@@ -1,29 +1,22 @@
 "use client"
 
 import type { ReactNode } from "react"
+import type { NavPage } from "@/components/nav-menu"
 import { Navbar } from "@/components/navbar"
-import { Sidebar } from "@/components/sidebar"
-import { Footer } from "@/components/footer"
 
 interface LayoutWrapperProps {
   children: ReactNode
   activeTab?: "audio" | "chat" | "video"
-  activePage?: "home" | "text-to-speech" | "speech-to-speech" | "voices" | "speech-to-text" | "audio-separation"
+  activePage?: NavPage
 }
 
 export function LayoutWrapper({ children, activeTab = "audio", activePage = "home" }: LayoutWrapperProps) {
   return (
     <div className="flex h-screen flex-col bg-white dark:bg-gray-900 dark:text-white transition-colors">
-      <Navbar activeTab={activeTab} />
+      <Navbar activeTab={activeTab} activePage={activePage} />
 
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar activePage={activePage} />
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
-      </div>
-
-      <Footer />
+      {/* Main Content */}
+      <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   )
 }

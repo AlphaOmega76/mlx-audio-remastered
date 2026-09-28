@@ -1,16 +1,19 @@
 "use client"
 import Link from "next/link"
-import { User, Github } from "lucide-react"
+import { Github } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { NavMenu, type NavPage } from "@/components/nav-menu"
 
 interface NavbarProps {
   activeTab?: "audio" | "chat" | "video"
+  activePage?: NavPage
 }
 
-export function Navbar({ activeTab = "audio" }: NavbarProps) {
+export function Navbar({ activeTab = "audio", activePage = "home" }: NavbarProps) {
   return (
     <header className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-2">
-      <div className="flex items-center space-x-6">
+      <div className="flex items-center space-x-3">
+        <NavMenu activePage={activePage} />
         <Link href="/home" className="flex items-center">
           <div className="mr-2 h-5 w-5">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="stroke-current">
@@ -36,9 +39,6 @@ export function Navbar({ activeTab = "audio" }: NavbarProps) {
           <Github className="h-5 w-5" />
         </a>
         <ThemeToggle />
-        <button className="rounded-full bg-blue-500 p-1 text-white hover:bg-blue-600">
-          <User className="h-5 w-5" />
-        </button>
       </div>
     </header>
   )
