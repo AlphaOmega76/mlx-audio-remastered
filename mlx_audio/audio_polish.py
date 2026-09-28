@@ -10,8 +10,10 @@ chunk its own volume, pace and edge silence. ``polish_audio`` evens those out:
 * ``pause_ms``      appends a fixed pause, so the gap between chunks is always the same.
 * ``narration_id``  matches the pace (words per second of voiced speech) of every chunk to
                     the first chunk of the same narration, by time-stretching.
-* ``looks_runaway`` detects the model occasionally failing to stop, or dragging the text out
-                    at a fraction of normal speed; the server regenerates such a chunk.
+* ``looks_runaway`` detects the model occasionally failing to stop, dragging the text out at
+                    a fraction of normal speed, or (once a narration has a reference pace)
+                    racing/garbling it far faster than normal; the server regenerates such
+                    a chunk.
 * ``speed``         a real playback-speed change for models that ignore the ``speed``
                     argument (e.g. Qwen3-TTS), done by pitch-preserving time-stretching.
 """
@@ -26,7 +28,12 @@ from scipy.signal import correlate
 FRAME_S = 0.02  # analysis frame for level / silence detection
 MAX_PACE_CORRECTION = 0.2  # never stretch a chunk by more than +-20% to match the pace
 MIN_STRETCH_DELTA = 0.02  # ignore corrections smaller than 2%
-RUNAWAY_RATIO = 0.7  # a chunk slower than this fraction of the narration pace is suspect
+# once a narration has a reference pace, a chunk whose pace falls outside
+# [RUNAWAY_RATIO, 1 / RUNAWAY_RATIO] of it is suspect -- either dragging out (slow) or
+# racing/garbling the text (fast). Before a reference exists there is only a floor: a
+# ceiling here has no validated real-world value to compare against yet (unlike
+# ABSOLUTE_MIN_RATE, which was tuned against real recorded chunks).
+RUNAWAY_RATIO = 0.7
 ABSOLUTE_MIN_RATE = 1.8  # words (or characters) per voiced second below which speech is broken
 MAX_SESSIONS = 128
 
@@ -203,10 +210,13 @@ def chunk_pace(audio, sample_rate: int, text: str) -> Optional[float]:
 
 
 def looks_runaway(audio, sample_rate: int, text: str, narration_id: Optional[str] = None) -> bool:
-    """True if a chunk is far slower than speech should be, so it is worth regenerating.
+    """True if a chunk's pace is far enough from normal speech to be worth regenerating.
 
-    Compares against the narration's pace when the first chunk has set one, and
-    otherwise against an absolute floor.
+    Catches two failure modes: the model dragging the text out at a fraction of normal
+    speed (rambling, or failing to stop), and -- once a narration has a reference pace --
+    the model racing/garbling the text far faster than normal ("stroke"-sounding chunks
+    that are broken, not just slow). The first chunk of a narration is only checked
+    against the absolute floor, since there is nothing yet to compare its pace to.
     """
     rate = chunk_pace(audio, sample_rate, text)
     if rate is None:
@@ -214,7 +224,9 @@ def looks_runaway(audio, sample_rate: int, text: str, narration_id: Optional[str
     if rate < ABSOLUTE_MIN_RATE:
         return True
     ref = _get_ref(narration_id) if narration_id else None
-    return ref is not None and rate < RUNAWAY_RATIO * ref
+    if ref is None:
+        return False
+    return rate < RUNAWAY_RATIO * ref or rate > ref / RUNAWAY_RATIO
 
 
 def polish_audio(
