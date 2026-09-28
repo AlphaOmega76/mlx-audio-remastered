@@ -10,7 +10,18 @@ MLX Audio ships with a FastAPI-based API server and a Next.js web interface (Stu
 mlx_audio.server --host 0.0.0.0 --port 8000
 ```
 
-### API Server with Studio UI
+### API Server with the built Studio UI (one port)
+
+Build the UI once and the API server serves it itself, so the whole app runs on a single port:
+
+```bash
+cd mlx_audio/ui && npm install && npm run build   # writes mlx_audio/ui/out
+mlx_audio.server                                   # UI and API at http://localhost:8000
+```
+
+Rebuild after changing UI files. If the UI has not been built, the server runs API-only.
+
+### API Server with Studio UI (development)
 
 Pass `--start-ui` to launch the Next.js web interface alongside the API server:
 
@@ -96,6 +107,35 @@ curl -X POST http://localhost:8000/v1/audio/speech \
 | `ref_audio` | string | `null` | Path to reference audio for voice cloning |
 | `ref_text` | string | `null` | Transcript of reference audio |
 | `instruct` | string | `null` | Style/emotion instruction |
+| `trim_silence` | bool | `false` | Cut leading and trailing silence |
+| `max_pause_ms` | int | `null` | Shorten silences inside the audio that are longer than this |
+| `loudness_db` | float | `null` | Level the voiced speech to this RMS in dBFS (for example `-20`) |
+| `pause_ms` | int | `0` | Append this much silence after the audio |
+| `narration_id` | string | `null` | Match the pace of every chunk of a narration to its first chunk (see below) |
+
+`speed` is applied for every model. Models that ignore it natively (currently Qwen3-TTS) are sped up or slowed down by pitch-preserving time-stretching.
+
+#### Narrating long text in chunks
+
+A long text is best sent as several requests (paragraph by paragraph). A sampling model gives each chunk its own volume, pace and edge silence, so the joins can sound uneven. The last five fields above even that out. Send the same `narration_id` (any unique string) with every chunk of one text, in order:
+
+```bash
+curl -X POST http://localhost:8000/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16",
+    "input": "First chunk of the text.",
+    "voice": "ryan",
+    "response_format": "wav",
+    "trim_silence": true, "max_pause_ms": 500, "loudness_db": -20,
+    "pause_ms": 600, "narration_id": "my-article-1"
+  }' --output chunk1.wav
+```
+
+- Every chunk is trimmed, capped and leveled the same way, and followed by the same fixed pause, so the gap at each join is predictable.
+- The first chunk sets the pace; later chunks are stretched or compressed (by at most 20%) to match it.
+- With a `narration_id`, a chunk that comes out far slower than normal speech (the model occasionally fails to stop) is regenerated, up to two more times.
+- Set `max_tokens` in proportion to the text (about 1.6 per character for Qwen3-TTS) so a runaway generation cannot run long.
 
 #### Streaming TTS
 
