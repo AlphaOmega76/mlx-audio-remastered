@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MLX-Audio Reader</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="title">MLX-Audio Reader</span>
+      <button id="settings" class="link" title="Settings">Settings</button>
+    </header>
+
+    <div id="server" class="notice hidden"></div>
+
+    <section id="idle">
+      <button id="read" class="primary">Read this page</button>
+      <p class="hint" id="hint">Reads your selection if you have text highlighted, otherwise the article.</p>
+    </section>
+
+    <section id="player" class="hidden">
+      <div id="page-title" class="page-title"></div>
+      <div id="status" class="status"></div>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <div class="controls">
+        <button id="prev" title="Previous paragraph" aria-label="Previous paragraph">&#9198;</button>
+        <button id="toggle" class="primary round" title="Pause" aria-label="Pause">&#10074;&#10074;</button>
+        <button id="next" title="Next paragraph" aria-label="Next paragraph">&#9197;</button>
+        <button id="stop" title="Stop" aria-label="Stop">&#9632;</button>
+      </div>
+      <button id="restart" class="link hidden">Read this page instead</button>
+    </section>
+
+    <div id="error" class="notice error hidden"></div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
