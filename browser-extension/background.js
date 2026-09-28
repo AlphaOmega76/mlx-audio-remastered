@@ -7,10 +7,13 @@ const SESSION_KEY = "session"
 const OFFSCREEN_URL = "offscreen.html"
 // Every chunk boundary is a chance for the voice's pace and tone to change, so chunks are
 // as large as the model handles reliably and end at paragraph boundaries where possible.
-// The server generates speech at roughly real-time speed, so the first chunks are smaller
-// and grow, which lets sound start quickly with the next chunk ready before this one ends.
+// The server generates speech close to (but not much faster than) real-time, so the first
+// chunks are smaller and grow, which lets sound start quickly with the next chunk ready
+// before this one ends. CHUNK_MAX is capped at the same size as the last ramp step (rather
+// than growing further) so no single chunk's generation time gets long enough to depend on
+// the lookahead buffer already having a lead, which is what caused long waits between chunks.
 const RAMP = [200, 320, 450]
-const CHUNK_MAX = 650
+const CHUNK_MAX = 450
 const PAUSE_PARAGRAPH_MS = 600 // pause after a chunk that ends a paragraph
 const PAUSE_SENTENCE_MS = 200 // pause after a chunk that ends mid-paragraph
 const limitFor = (i) => RAMP[i] ?? CHUNK_MAX
