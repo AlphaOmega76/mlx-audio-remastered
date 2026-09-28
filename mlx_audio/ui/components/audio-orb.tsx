@@ -111,7 +111,7 @@ function OrbMesh({ isListening, isProcessing, audioUrl }: AudioOrbProps) {
 
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        const audioContext = analyserRef.current.context
+        const audioContext = analyserRef.current.context as AudioContext
         sourceNode = audioContext.createMediaStreamSource(micStream)
         sourceNode.connect(analyserRef.current)
       } catch (error) {

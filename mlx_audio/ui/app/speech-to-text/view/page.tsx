@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { ArrowLeft, Download, MoreVertical, Play, Pause, SkipBack, SkipForward, ExternalLink } from "lucide-react"
 import Link from "next/link"
@@ -22,9 +21,12 @@ interface TranscriptSegment {
 }
 
 export default function TranscriptViewerPage() {
-  const params = useParams()
-  const router = useRouter()
-  const fileId = params.id as string
+  // The page is a static file, so the transcript ID comes from the address
+  // (/speech-to-text/view/?id=...) and is read in the browser after load.
+  const [fileId, setFileId] = useState("")
+  useEffect(() => {
+    setFileId(new URLSearchParams(window.location.search).get("id") ?? "")
+  }, [])
   const [activeTab, setActiveTab] = useState<"view" | "edit">("view")
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -135,6 +137,7 @@ export default function TranscriptViewerPage() {
 
 
   useEffect(() => {
+    if (!fileId) return
     const stored = localStorage.getItem(`mlx-audio-transcription-${fileId}`)
     if (stored) {
       try {

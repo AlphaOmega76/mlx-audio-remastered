@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
+import { getApiUrl } from "@/utils/api"
 import { Upload, Play, Pause, Download, RefreshCw, ChevronDown, Volume2, VolumeX } from "lucide-react"
 
 interface AudioTrack {
@@ -193,9 +194,6 @@ export default function AudioSeparationPage() {
     setIsProcessing(true)
     setError(null)
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost'
-    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000'
-
     const fullModelName = precision === "fp16" ? `${model}-fp16` : model
 
     const formData = new FormData()
@@ -206,7 +204,7 @@ export default function AudioSeparationPage() {
     formData.append("steps", steps.toString())
 
     try {
-      const response = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/separations`, {
+      const response = await fetch(`${getApiUrl()}/v1/audio/separations`, {
         method: "POST",
         body: formData,
       })

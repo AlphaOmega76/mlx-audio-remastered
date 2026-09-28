@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, Upload } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
+import { getApiUrl } from "@/utils/api"
 import { VoiceSelection } from "@/components/voice-selection"
 
 // Custom range input component with colored progress
@@ -316,12 +317,6 @@ export default function SpeechSynthesis() {
         setQuantization(availableQuants[0])
       }
     }
-  }
-
-  const getApiUrl = () => {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost"
-    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8000"
-    return `${API_BASE_URL}:${API_PORT}`
   }
 
   const handlePlayPause = () => {

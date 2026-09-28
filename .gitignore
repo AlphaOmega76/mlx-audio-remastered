@@ -50,3 +50,6 @@ claude.md
 
 # npm lockfile for the UI
 package-lock.json
+
+# Built web UI served by the API server (npm run build in mlx_audio/ui)
+mlx_audio/ui/out

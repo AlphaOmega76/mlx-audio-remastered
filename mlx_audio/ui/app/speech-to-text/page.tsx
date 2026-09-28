@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { FileText, Upload, MoreVertical, X, ChevronDown, Mic } from "lucide-react"
 import Link from "next/link"
+import { getApiUrl } from "@/utils/api"
 
 interface TranscriptionFile {
   id: string
@@ -89,11 +90,8 @@ export default function SpeechToTextPage() {
       reader.readAsDataURL(file)
     })
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
-    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
-
     try {
-      const res = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/transcriptions`, {
+      const res = await fetch(`${getApiUrl()}/v1/audio/transcriptions`, {
         method: "POST",
         body: formData,
       })
@@ -303,7 +301,7 @@ export default function SpeechToTextPage() {
                   </div>
                   <div className="flex items-center">
                     {file.status === "completed" && (
-                      <Link href={`/speech-to-text/${file.id}`}>
+                      <Link href={`/speech-to-text/view/?id=${encodeURIComponent(file.id)}`}>
                         <button className="text-sky-500 hover:text-sky-600 text-sm mr-4">View transcript</button>
                       </Link>
                     )}

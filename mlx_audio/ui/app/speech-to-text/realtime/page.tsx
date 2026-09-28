@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
+import { getWsUrl } from "@/utils/api"
 import { Mic, MicOff, ChevronDown } from "lucide-react"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
@@ -138,11 +139,7 @@ export default function RealtimeTranscriptionPage() {
       console.log("Audio context created with sample rate:", audioContext.sampleRate)
 
       // Connect to WebSocket first
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost"
-      const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8000"
-      const wsProtocol = API_BASE_URL.startsWith("https") ? "wss" : "ws"
-      const host = API_BASE_URL.replace(/^https?:\/\//, "").replace(/^http:\/\//, "").split(":")[0]
-      const wsUrl = `${wsProtocol}://${host}:${API_PORT}/v1/audio/transcriptions/realtime`
+      const wsUrl = getWsUrl("/v1/audio/transcriptions/realtime")
 
       const ws = new WebSocket(wsUrl)
       websocketRef.current = ws

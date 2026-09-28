@@ -61,6 +61,7 @@ from mlx_audio.server_inference import (
 )
 from mlx_audio.stt.streaming import StreamingSession
 from mlx_audio.tts.continuous import TTSBatchItem, TTSBatchOptions
+from mlx_audio.ui_static import mount_ui, ui_is_built
 from mlx_audio.utils import load_model
 
 
@@ -2012,6 +2013,12 @@ async def realtime_ws(websocket: WebSocket):
         mx.clear_cache()
 
 
+# Serve the built web UI (mlx_audio/ui/out) from this same server and port when it
+# has been built. This must stay after every route above: the mount at "/" catches
+# any path that nothing else handled.
+mount_ui(app)
+
+
 class MLXAudioStudioServer:
     def __init__(self, start_ui=False, log_dir="logs"):
         self.start_ui = start_ui
@@ -2067,6 +2074,15 @@ class MLXAudioStudioServer:
         elif realtime:
             print(f"✓ Realtime server starting on http://{host}:{port}")
             print("✓ Standard endpoints remain mounted; prefer realtime endpoints.")
+
+        if not self.start_ui:
+            if ui_is_built():
+                print(f"✓ Web UI and API available at http://{host}:{port}")
+            else:
+                print(
+                    "ℹ Web UI not built, serving the API only. To build it: "
+                    "cd mlx_audio/ui && npm install && npm run build"
+                )
 
         try:
             uvicorn.run(
