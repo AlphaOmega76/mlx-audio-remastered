@@ -8,6 +8,7 @@ export const MODELS = [
     id: QWEN3_MODEL,
     label: "Qwen3-TTS",
     supportsInstruction: true,
+    boundedLength: true, // roughly 1 token per character; used to cap runaway generations
     voices: ["ryan", "serena", "vivian", "uncle_fu", "aiden", "ono_anna", "sohee", "eric", "dylan"],
   },
   {
@@ -37,7 +38,10 @@ export async function getSettings() {
 }
 
 // Request body for POST /v1/audio/speech (WAV keeps chunk boundaries gapless).
-export function buildSpeechBody(settings, input) {
+// `chunk` = { pauseMs, narrationId }: the server trims silence, caps long pauses, levels
+// the volume, matches the pace of the narration's first chunk and adds a fixed pause, so
+// separately generated chunks sound like one narration.
+export function buildSpeechBody(settings, input, chunk = {}) {
   const model = MODELS.find((m) => m.id === settings.model) || MODELS[0]
   return {
     model: model.id,
@@ -45,6 +49,13 @@ export function buildSpeechBody(settings, input) {
     voice: settings.voice,
     speed: Number(settings.speed) || 1,
     response_format: "wav",
+    trim_silence: true,
+    max_pause_ms: 500,
+    loudness_db: -20,
+    pause_ms: chunk.pauseMs || 0,
+    ...(chunk.narrationId ? { narration_id: chunk.narrationId } : {}),
+    // the model sometimes fails to stop; bound how long a chunk can run
+    ...(model.boundedLength ? { max_tokens: Math.min(1200, Math.ceil(input.length * 1.6) + 40) } : {}),
     ...(model.supportsInstruction && settings.instruction ? { instruct: settings.instruction } : {}),
   }
 }

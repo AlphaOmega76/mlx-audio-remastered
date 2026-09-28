@@ -5,12 +5,15 @@ import { getSettings } from "./settings.js"
 
 const SESSION_KEY = "session"
 const OFFSCREEN_URL = "offscreen.html"
-const CHUNK_CHARS = 500
-// The server generates speech at roughly real-time speed, so a big first chunk means a
-// long silence before anything plays. Start small and let each chunk grow (each is
-// at most ~1.3x the previous one) so the next is ready before the current one ends.
-const RAMP = [120, 160, 210, 270, 350, 450]
-const limitFor = (i) => RAMP[i] ?? CHUNK_CHARS
+// Every chunk boundary is a chance for the voice's pace and tone to change, so chunks are
+// as large as the model handles reliably and end at paragraph boundaries where possible.
+// The server generates speech at roughly real-time speed, so the first chunks are smaller
+// and grow, which lets sound start quickly with the next chunk ready before this one ends.
+const RAMP = [200, 320, 450]
+const CHUNK_MAX = 650
+const PAUSE_PARAGRAPH_MS = 600 // pause after a chunk that ends a paragraph
+const PAUSE_SENTENCE_MS = 200 // pause after a chunk that ends mid-paragraph
+const limitFor = (i) => RAMP[i] ?? CHUNK_MAX
 
 let session = null
 
@@ -50,22 +53,34 @@ async function broadcast() {
 
 // ---- chunking ----
 
-// Groups consecutive sentences into chunks (small at first, then about CHUNK_CHARS). Each sentence keeps
-// the slice of its chunk it occupies (start/end as a fraction of the chunk's text),
-// which is used to estimate which sentence is being spoken at a given moment.
+// Groups consecutive sentences into chunks. Each sentence keeps the slice of its chunk it
+// occupies (start/end as a fraction of the chunk's text), which is used to estimate which
+// sentence is being spoken at a given moment.
 function buildChunks(sentences) {
+  const blockLen = {}
+  for (const s of sentences) blockLen[s.block] = (blockLen[s.block] || 0) + s.text.length + 1
+
   const chunks = []
   let c = null
-  for (const s of sentences) {
-    if (c && c.text.length + s.text.length + 1 > limitFor(chunks.length)) {
-      chunks.push(c)
-      c = null
+  sentences.forEach((s, k) => {
+    const paraStart = k === 0 || sentences[k - 1].block !== s.block
+    const limit = limitFor(chunks.length)
+    if (c) {
+      const doesNotFit = c.text.length + s.text.length + 1 > limit
+      const paragraphDoesNotFit = paraStart && c.text.length + blockLen[s.block] > limit && c.text.length >= 0.4 * limit
+      if (paragraphDoesNotFit || doesNotFit) {
+        chunks.push(c)
+        c = null
+      }
     }
-    if (!c) c = { text: "", sentences: [] }
+    if (!c) c = { text: "", sentences: [], pauseMs: PAUSE_SENTENCE_MS }
     c.sentences.push({ id: s.id, block: s.block, weight: s.text.length + (c.text ? 1 : 0) })
     c.text += (c.text ? " " : "") + s.text
-  }
+    const paraEnd = k === sentences.length - 1 || sentences[k + 1].block !== s.block
+    c.pauseMs = paraEnd ? PAUSE_PARAGRAPH_MS : PAUSE_SENTENCE_MS
+  })
   if (c) chunks.push(c)
+  if (chunks.length) chunks[chunks.length - 1].pauseMs = 0 // nothing follows the last chunk
   for (const ch of chunks) {
     const total = ch.sentences.reduce((n, x) => n + x.weight, 0)
     let acc = 0
@@ -111,7 +126,10 @@ async function revive(index, frac) {
   const settings = await getSettings()
   session.seq += 1
   await ensureOffscreen()
-  toPlayer({ type: "load", texts: session.texts, settings, seq: session.seq, startAt: index, frac })
+  toPlayer({
+    type: "load", texts: session.texts, pauses: session.pauses, narrationId: session.narrationId,
+    settings, seq: session.seq, startAt: index, frac,
+  })
 }
 
 const toPlayer = (msg) => chrome.runtime.sendMessage({ target: "offscreen", ...msg }).catch(() => {})
@@ -162,6 +180,8 @@ async function start(tabId) {
     tabId, title: result.title, url: result.url, mode: result.mode,
     status: "loading", error: null,
     texts: chunks.map((c) => c.text),
+    pauses: chunks.map((c) => c.pauseMs),
+    narrationId: crypto.randomUUID(),
     chunks: chunks.map((c) => ({ sentences: c.sentences.map((x) => ({ id: x.id, start: x.start, end: x.end })) })),
     sentenceInfo, sentenceCount: result.sentences.length, chunkCount: chunks.length,
     cur: 0, curSentence: -1, generated: 0, time: 0, duration: 0, userPaused: false, seq: 0,
@@ -170,7 +190,7 @@ async function start(tabId) {
   await broadcast()
 
   await ensureOffscreen()
-  toPlayer({ type: "load", texts: session.texts, settings, seq: 0 })
+  toPlayer({ type: "load", texts: session.texts, pauses: session.pauses, narrationId: session.narrationId, settings, seq: 0 })
 }
 
 async function stop() {
@@ -255,7 +275,9 @@ async function onProgress(msg) {
 
   const chunk = session.chunks[msg.chunk]
   if (chunk && !msg.buffering && msg.duration > 0) {
-    const f = msg.time / msg.duration
+    // the server appends a fixed pause of silence; sentence timing only covers the speech
+    const speechSeconds = Math.max(0.1, msg.duration - (session.pauses?.[msg.chunk] || 0) / 1000)
+    const f = Math.min(0.9999, msg.time / speechSeconds)
     const s = chunk.sentences.find((x) => f >= x.start && f < x.end) || chunk.sentences[chunk.sentences.length - 1]
     await highlight(s.id)
   }

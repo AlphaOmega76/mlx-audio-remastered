@@ -13,6 +13,8 @@ const audio = new Audio()
 let token = 0 // bumps on every load/stop so stale async work can tell it is obsolete
 let settings = null
 let texts = []
+let pauses = [] // fixed pause (ms) the server adds after each chunk
+let narrationId = null // groups the chunks so the server keeps their pace consistent
 let urls = [] // object URLs of generated audio, by chunk index
 let cur = 0
 let wantPlay = false // the user wants sound (false while paused)
@@ -58,11 +60,11 @@ function nextToGenerate() {
   return -1
 }
 
-async function synth(text, signal) {
+async function synth(text, index, signal) {
   const res = await fetch(`${settings.serverUrl}/v1/audio/speech`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildSpeechBody(settings, text)),
+    body: JSON.stringify(buildSpeechBody(settings, text, { pauseMs: pauses[index], narrationId })),
     signal,
   })
   if (!res.ok) {
@@ -85,7 +87,7 @@ async function pump(myToken) {
     ctrl = new AbortController()
     inflight = i
     try {
-      const blob = await synth(texts[i], ctrl.signal)
+      const blob = await synth(texts[i], i, ctrl.signal)
       if (myToken !== token) return
       urls[i] = URL.createObjectURL(blob)
       inflight = -1
@@ -163,6 +165,8 @@ function load(msg) {
   reset()
   settings = msg.settings
   texts = msg.texts
+  pauses = msg.pauses || []
+  narrationId = msg.narrationId || null
   seq = msg.seq || 0
   cur = msg.startAt || 0 // a revived session resumes where it left off
   pendingFrac = msg.frac || 0

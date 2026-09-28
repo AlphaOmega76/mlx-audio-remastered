@@ -29,10 +29,14 @@ Works in Chrome and other Chromium-based browsers (Brave, Edge, Arc).
   finds the selection or main article, drops menus, ads and footers, and splits the text into
   sentences. It highlights the current sentence with the CSS Custom Highlight API, so the page
   itself is never modified.
-- `background.js` groups sentences into chunks (short at first so audio starts quickly, then
-  growing), tracks which sentence is being spoken, and drives the highlight.
+- `background.js` groups sentences into chunks, tracks which sentence is being spoken, and
+  drives the highlight. Chunks end at paragraph boundaries where possible, and start small
+  and grow so audio begins quickly.
 - `offscreen.js` is a hidden page that requests speech from `/v1/audio/speech` a few chunks
   ahead of the playback position and plays it, so long articles are not synthesized all at once.
+  Each request asks the server to trim silence, cap long pauses, level the volume and match the
+  pace of the narration's first chunk (see "Narrating long text in chunks" in
+  `docs/guides/web-ui-api-server.md`), so the chunks sound like one continuous reading.
 - Chrome closes that hidden page after 30 seconds without sound (for example a long pause).
   The extension notices and rebuilds it from the saved position when you press Play.
 
@@ -43,4 +47,6 @@ Works in Chrome and other Chromium-based browsers (Brave, Edge, Arc).
 - Speech is generated at about real-time speed, so a moment of "Generating the next part…" can
   happen on very fast reading speeds or slow machines.
 - Highlight timing inside a chunk is estimated from sentence length, so it can drift by a beat.
+- The voice model still varies a little in tone from chunk to chunk; the server evens out
+  volume, pace and the gaps between chunks, but cannot make the delivery identical.
 - If you change the server to another address, allow it under the extension's site access.
