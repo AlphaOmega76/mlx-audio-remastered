@@ -22,8 +22,8 @@ if [ -z "$VENV_PYTHON" ] || [ -z "$PORT" ] || [ -z "$TARGET_DIR" ] || [ -z "$SER
 fi
 
 mkdir -p "$TARGET_DIR" "$SERVER_LOG_DIR"
-LOG_FILE="$HOME/Library/Logs/MLX-Audio.log"
-mkdir -p "$HOME/Library/Logs"
+LOG_FILE="${MLXA_LOG_FILE:-$HOME/Library/Logs/MLX-Audio.log}"
+mkdir -p "$(dirname "$LOG_FILE")"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -84,7 +84,10 @@ EOF
 cat > "$TMP/stop.applescript" <<'EOF'
 on run
 	try
-		do shell script "kill $(lsof -ti:__PORT__) 2>/dev/null; exit 0"
+		-- "-sTCP:LISTEN" matters: plain `lsof -ti:PORT` also returns every process merely
+		-- connected to the port (an open browser tab's network process, for example), and
+		-- this would then kill those too. Only the server is listening.
+		do shell script "kill $(lsof -ti tcp:__PORT__ -sTCP:LISTEN) 2>/dev/null; exit 0"
 		display notification "MLX-Audio has been stopped." with title "MLX-Audio"
 	on error errMsg
 		display dialog "Could not stop MLX-Audio:" & return & errMsg buttons {"OK"} with icon caution
@@ -95,12 +98,14 @@ EOF
 # Substitute placeholders now (the scripts above are single-quoted heredocs, so none of
 # this was touched by the shell yet — the `$(...)` in stop.applescript is meant to be
 # evaluated later, when the compiled app actually runs it, not now).
+# sed_escape: a path containing & | or \ would otherwise be misread by sed's replacement text.
+sed_escape() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
 for f in "$TMP/start.applescript" "$TMP/stop.applescript"; do
   sed -i '' \
-    -e "s|__PORT__|$PORT|g" \
-    -e "s|__VENV_PYTHON__|$VENV_PYTHON|g" \
-    -e "s|__LOG_FILE__|$LOG_FILE|g" \
-    -e "s|__SERVER_LOG_DIR__|$SERVER_LOG_DIR|g" \
+    -e "s|__PORT__|$(sed_escape "$PORT")|g" \
+    -e "s|__VENV_PYTHON__|$(sed_escape "$VENV_PYTHON")|g" \
+    -e "s|__LOG_FILE__|$(sed_escape "$LOG_FILE")|g" \
+    -e "s|__SERVER_LOG_DIR__|$(sed_escape "$SERVER_LOG_DIR")|g" \
     "$f"
 done
 

@@ -6,14 +6,17 @@
 #   ~/Library/Application Support/MLX-Audio/   (the app's own private copy of the code + a
 #                                                private Python environment, unrelated to any
 #                                                other Python on this Mac)
+#   ~/Library/Application Support/MLX-Audio/logs (the server's own small log folder)
 #   ~/Library/Logs/MLX-Audio.log                (server output, useful if something goes wrong)
-#   /Applications/MLX-Audio.app                 (double-click to start)
-#   /Applications/Stop MLX-Audio.app            (double-click to stop)
+#   /Applications/MLX-Audio.app                 (double-click to start; falls back to
+#   /Applications/Stop MLX-Audio.app             ~/Applications if /Applications isn't writable,
+#                                                which is the case for non-admin Mac accounts)
 #   ~/Desktop/Uninstall MLX-Audio.command        (removes everything above)
 #
-# Advanced/testing: set MLXA_APP_SUPPORT, MLXA_APPS_DIR, MLXA_PORT or MLXA_DESKTOP to
-# override the defaults above (used to test this script without touching a real install
-# -- every real location this script writes to has an override, on purpose).
+# Advanced/testing: set MLXA_APP_SUPPORT, MLXA_APPS_DIR, MLXA_PORT, MLXA_DESKTOP or
+# MLXA_LOG_FILE to override the locations above (used to test this script without touching
+# a real install). The fallback to ~/Applications only happens when MLXA_APPS_DIR is unset;
+# if an override is set but not writable, the script stops instead.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -28,6 +31,21 @@ APP_SRC="$APP_SUPPORT/app"
 say() { echo "\n== $1 =="; }
 
 say "Installing $APP_NAME"
+
+# Standard (non-admin) Mac accounts can't write to /Applications. Find that out now, not
+# after the multi-minute download.
+mkdir -p "$APPS_DIR" 2>/dev/null || true
+if [ ! -w "$APPS_DIR" ]; then
+  if [ -n "${MLXA_APPS_DIR:-}" ]; then
+    # An explicit override (used for testing) must never quietly turn into a write to the
+    # real ~/Applications.
+    echo "MLXA_APPS_DIR=$MLXA_APPS_DIR isn't writable; stopping instead of falling back to ~/Applications." >&2
+    exit 1
+  fi
+  echo "Note: $APPS_DIR isn't writable for this account, so the app icons will go in ~/Applications instead."
+  APPS_DIR="$HOME/Applications"
+  mkdir -p "$APPS_DIR"
+fi
 
 if [ "$(uname -m)" != "arm64" ]; then
   echo "Sorry — MLX-Audio needs an Apple Silicon Mac (M1 or later). This Mac reports: $(uname -m)."
@@ -82,7 +100,7 @@ fi
 say "Installing MLX-Audio"
 echo "This downloads its dependencies (a few hundred MB the first time) and can take"
 echo "several minutes. Please be patient — it hasn't frozen."
-"$VENV/bin/python3" -m pip install --upgrade pip wheel --quiet || true
+"$VENV/bin/python3" -m pip install --upgrade pip wheel --quiet || echo "(Couldn't update pip itself; continuing with the version already there.)"
 # NOTE: must be "${APP_SRC}[all,server]" not "$APP_SRC[all,server]" -- in zsh the
 # latter is parsed as a subscript/slice on $APP_SRC (evaluating to an empty string)
 # rather than literal text, which made this silently install nothing.

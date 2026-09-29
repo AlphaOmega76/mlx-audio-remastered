@@ -8,6 +8,7 @@ APP_NAME="MLX-Audio"
 APP_SUPPORT="${MLXA_APP_SUPPORT:-$HOME/Library/Application Support/$APP_NAME}"
 APPS_DIR="${MLXA_APPS_DIR:-/Applications}"
 PORT="${MLXA_PORT:-8000}"
+LOG_FILE="${MLXA_LOG_FILE:-$HOME/Library/Logs/MLX-Audio.log}"
 
 echo "This will remove MLX-Audio (the app, its Python environment, and its files)."
 printf "Continue? [y/N] "
@@ -18,7 +19,9 @@ case "$REPLY" in
 esac
 
 echo "Stopping the server, if it's running…"
-kill $(lsof -ti:"$PORT") 2>/dev/null || true
+# listeners only: plain `lsof -ti:PORT` also returns processes merely connected to the port
+# (e.g. a browser tab), and this must not kill those
+kill $(lsof -ti tcp:"$PORT" -sTCP:LISTEN) 2>/dev/null || true
 
 echo "Removing app icons…"
 rm -rf "$APPS_DIR/MLX-Audio.app" "$APPS_DIR/Stop MLX-Audio.app"
@@ -26,7 +29,9 @@ rm -rf "$HOME/Applications/MLX-Audio.app" "$HOME/Applications/Stop MLX-Audio.app
 
 echo "Removing files…"
 rm -rf "$APP_SUPPORT"
-rm -f "$HOME/Library/Logs/MLX-Audio.log"
+rm -f "$LOG_FILE"
 
 echo "Done. MLX-Audio has been removed."
+echo "(Voice models it downloaded are kept in ~/.cache/huggingface and may take several GB;"
+echo " they are shared with other tools, so they were left alone. Delete that folder to reclaim the space.)"
 echo "(You can delete this file too — it has done its job.)"

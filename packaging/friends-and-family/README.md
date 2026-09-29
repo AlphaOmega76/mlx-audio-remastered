@@ -46,6 +46,16 @@ Send both zips to your friend, or just the app zip if they don't want the extens
 7. Copies `uninstall.command` to their Desktop so it's always around later, even if they
    delete the original zip/download.
 
+If `/Applications` isn't writable (a standard, non-admin Mac account), the icons go in
+`~/Applications` instead; this is checked up front so it can't fail after the long download.
+The Stop app and the uninstaller stop only the process *listening* on the port
+(`lsof -ti tcp:PORT -sTCP:LISTEN`), never other processes merely connected to it, like a
+browser tab. The uninstaller leaves downloaded voice models in `~/.cache/huggingface` (they
+are shared with other tools) and tells the user so.
+
+For same-machine testing, override locations with `MLXA_APP_SUPPORT`, `MLXA_APPS_DIR`,
+`MLXA_PORT`, `MLXA_DESKTOP` and `MLXA_LOG_FILE` (see the top of `install.command`).
+
 **Why two separate app icons instead of one that starts and stops on quit** (like your own
 Automator launcher): reliably detecting "the user quit the app" from a script running via
 `do shell script` isn't something I could verify without testing on a real second Mac, so
