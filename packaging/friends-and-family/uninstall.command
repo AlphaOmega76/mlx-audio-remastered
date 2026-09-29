@@ -19,6 +19,8 @@ case "$REPLY" in
 esac
 
 echo "Stopping the server, if it's running…"
+# the server runs as a launchd job (which restarts it if killed), so remove the job first
+launchctl remove "com.mlxaudio.server.$PORT" >/dev/null 2>&1 || true
 # listeners only: plain `lsof -ti:PORT` also returns processes merely connected to the port
 # (e.g. a browser tab), and this must not kill those
 kill $(lsof -ti tcp:"$PORT" -sTCP:LISTEN) 2>/dev/null || true
