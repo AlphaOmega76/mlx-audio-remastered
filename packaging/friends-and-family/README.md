@@ -126,10 +126,30 @@ Making the window app itself own the server removes all of that.
 
 ## Extras installed
 
-`pip install "...[all,server,desktop]"` — `all` covers TTS/STT/STS, `server` adds the FastAPI/
-uvicorn/pypdf bits the web UI's PDF-drop feature needs, and `desktop` adds `pywebview` for the window. (The `all` extra alone is missing
-`pypdf`, which looks like a small gap in the upstream project's own extras, not something
-specific to this installer.)
+`pip install "...[all,server,desktop,kokoro]"`:
+- `all` covers TTS/STT/STS; `server` adds the FastAPI/uvicorn/pypdf bits (the PDF-drop feature
+  needs pypdf, which the upstream `all` extra omits); `desktop` adds `pywebview` for the window.
+- `kokoro` is this fork's addition and **fixes a bug in the first two releases**: the default
+  Kokoro voice needs `misaki` (text processing), `num2words`, `spacy` and `phonemizer`, which
+  upstream only documents as a manual `pip install misaki`. Without them every speech request
+  failed on a fresh install ("Error generating speech: Load failed" in the window; the server log
+  said "Kokoro requires the optional 'misaki' package"). It worked on the author's Mac only because
+  those packages had been installed by hand. misaki's own `[en]` extra is *not* used: it pulls old
+  spaCy pieces that must be built from source on Python 3.14 and failed in a VM.
+
+Two more things happen right after `pip install`, because neither can come from PyPI/wheels alone:
+- `python -m spacy download en_core_web_sm` (misaki's English language model, 12.8 MB; it would
+  otherwise download itself on the first speech request).
+- `snapshot_download("mlx-community/Kokoro-82M-bf16")` (about 340 MB: 312 MB of weights plus the
+  voice files). Doing it on the first speech request took 76 s on a fast connection, and the app
+  window is a browser that gives up on a silent request after roughly a minute (believed, from the
+  60 s default; not measured), so on a slow connection the first speech would end in "Load failed".
+  Prefetched, the first request takes about 8 s.
+Both are best-effort: if a download fails, the installer says so and carries on.
+
+Found by testing an install in a VM by hand, which is why the earlier automated VM runs (which only
+checked that the server started) missed it: **an install test must actually generate speech.** Speech
+generation does work inside a VM (Kokoro ran fine).
 
 ## If you want to go further later
 

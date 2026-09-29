@@ -52,7 +52,8 @@ Full details, including how the installer works and how it was tested:
 ```bash
 git clone https://github.com/AlphaOmega76/mlx-audio-remastered.git
 cd mlx-audio-remastered
-python3 -m pip install -e ".[all,server,desktop]"
+python3 -m pip install -e ".[all,server,desktop,kokoro]"
+python3 -m spacy download en_core_web_sm    # English language model used by Kokoro
 
 mlx_audio.server                      # API + web interface on http://localhost:8000
 python -m mlx_audio.app_window        # the native window (starts the server for you)

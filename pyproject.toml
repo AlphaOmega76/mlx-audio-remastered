@@ -64,6 +64,18 @@ sts = [
     "setuptools<81", # pinned because >=81 drops pkg_resources which breaks webrtcvad
 ]
 
+# Kokoro's English text processing (misaki). Upstream only documents this as a manual
+# "pip install misaki" step, and misaki's own "[en]" extra pulls in old spaCy pieces that
+# have to be built from source on Python 3.14, so the pieces it really needs are listed here.
+# spaCy also needs its English model (en_core_web_sm); misaki downloads that on first use, and
+# the friends-and-family installer fetches it up front (`python -m spacy download en_core_web_sm`).
+kokoro = [
+    "misaki>=0.7.4",
+    "num2words>=0.5.12",
+    "spacy>=3.8",
+    "phonemizer>=3.3",
+]
+
 # Native macOS window: `python -m mlx_audio.app_window` (a real app window instead of a
 # browser tab; see packaging/friends-and-family). Not part of "all" on purpose: it only makes
 # sense on macOS and most users of the library never need a GUI.

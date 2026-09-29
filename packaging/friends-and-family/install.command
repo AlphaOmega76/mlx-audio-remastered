@@ -7,6 +7,9 @@
 #                                                private Python environment, unrelated to any
 #                                                other Python on this Mac)
 #   ~/Library/Application Support/MLX-Audio/logs (the server's own small log folder)
+#   ~/.cache/huggingface/                       (the Kokoro voice model, about 340 MB, shared with
+#                                                other tools; downloaded here so the first speech
+#                                                isn't slow, and left alone by the uninstaller)
 #   ~/Library/Logs/MLX-Audio.log                (server output, useful if something goes wrong)
 #   /Applications/MLX-Audio.app                 (double-click to open MLX-Audio in its own window;
 #                                                closing the window quits it and stops the server.
@@ -109,8 +112,9 @@ echo "several minutes. Please be patient — it hasn't frozen."
 # NOTE: must be "${APP_SRC}[all,server]" not "$APP_SRC[all,server]" -- in zsh the
 # latter is parsed as a subscript/slice on $APP_SRC (evaluating to an empty string)
 # rather than literal text, which made this silently install nothing.
-# "desktop" adds pywebview, which provides the native window.
-if ! "$VENV/bin/python3" -m pip install "${APP_SRC}[all,server,desktop]"; then
+# "desktop" adds pywebview (the native window); "kokoro" adds the text processing the default
+# Kokoro voice needs. Without it, generating speech fails with "Load failed" on a fresh install.
+if ! "$VENV/bin/python3" -m pip install "${APP_SRC}[all,server,desktop,kokoro]"; then
   echo ""
   echo "Installation failed. The most common cause on a fresh Mac is missing Apple"
   echo "developer command-line tools. Try running this in Terminal:"
@@ -119,6 +123,25 @@ if ! "$VENV/bin/python3" -m pip install "${APP_SRC}[all,server,desktop]"; then
   echo ""
   echo "...then run this installer again."
   exit 1
+fi
+
+# ---- the English language model Kokoro's text processing uses ---------------------------------
+# (It would download itself on the first speech request; doing it now surfaces problems early
+# and makes the first request fast.)
+say "Downloading the English language model"
+if ! "$VENV/bin/python3" -m spacy download en_core_web_sm; then
+  echo "(Couldn't download it now. The first time you generate speech it will try again, which needs internet.)"
+fi
+
+# ---- the Kokoro voice model itself (about 340 MB) --------------------------------------------
+# The app window is a browser, and browsers give up on a request that stays silent for about a
+# minute. Downloading the model on the first speech request took 76 s on a fast connection and
+# would take minutes on a slow one, ending in "Load failed". So it is fetched here, once.
+say "Downloading the Kokoro voice (about 340 MB)"
+echo "(Done now so your first speech isn't slow. It only downloads once and is kept for next time.)"
+if ! "$VENV/bin/python3" -c 'from huggingface_hub import snapshot_download; snapshot_download("mlx-community/Kokoro-82M-bf16")'; then
+  echo "(Couldn't download it now. The first time you generate speech it will try again, which"
+  echo " needs internet and can take a few minutes, so that first attempt may show an error; try again.)"
 fi
 
 # ---- launcher apps -------------------------------------------------------------------
