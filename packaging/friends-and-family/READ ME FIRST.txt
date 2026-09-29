@@ -1,0 +1,38 @@
+MLX-Audio — install instructions
+=================================
+
+This needs an Apple Silicon Mac (M1 or later).
+
+1. Unzip this folder if you haven't already, and keep it somewhere (Downloads is fine).
+
+2. Double-click "install.command".
+
+   macOS will probably show a warning like "install.command cannot be opened because it
+   is from an unidentified developer." This is normal for software shared outside the
+   App Store / Mac App Store. To get past it, once:
+     - Right-click (or Control-click) "install.command" and choose "Open".
+     - Click "Open" again in the dialog that appears.
+   You only need to do this once.
+
+3. A Terminal window will open and show progress. The first run downloads some things
+   and can take several minutes — this is normal, let it finish.
+
+4. When it says "Done", open your Applications folder. You'll see two new icons:
+     - "MLX-Audio" — double-click this to start it. Your web browser will open
+       automatically once it's ready.
+     - "Stop MLX-Audio" — double-click this when you're done, to free up memory.
+
+   The very first time you double-click "MLX-Audio", it can take several minutes before
+   your browser opens (macOS checks all the newly installed files the first time they
+   run). This only happens once — after that, starting it is quick. If it hasn't opened
+   after 10 minutes, try double-clicking "MLX-Audio" again.
+
+5. The first time you pick a voice, it downloads that voice's files, which can take a
+   little while depending on your internet connection. After that it's cached and fast.
+
+To remove everything later: double-click "Uninstall MLX-Audio.command" on your Desktop
+(it's placed there automatically during install).
+
+If something goes wrong, check the log file at:
+  ~/Library/Logs/MLX-Audio.log
+(In Finder: press Cmd+Shift+G and paste that path in.)
