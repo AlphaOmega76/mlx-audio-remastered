@@ -25,7 +25,8 @@ Everything runs on your own Mac. Nothing you type or read is sent anywhere.
   levelled for volume, matched for pace and joined with consistent pauses. Broken pieces (too slow or
   too fast, so garbled) are detected and regenerated automatically.
 - **Kokoro as the default voice**, chosen because it sounded more natural and more consistent in
-  practice; Qwen3-TTS is still available from the model menu.
+  practice, with a **voice picker** for its American and British English voices (your choice is
+  remembered); Qwen3-TTS is still available from the model menu.
 - **One address for everything.** The web interface is served by the same server that does the speech,
   with PDF drag-and-drop, chunk-by-chunk playback and WAV download.
 

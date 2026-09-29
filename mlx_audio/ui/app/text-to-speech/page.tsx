@@ -9,6 +9,26 @@ import { getApiUrl } from "@/utils/api"
 import { splitIntoChunks } from "@/utils/chunking"
 import { VoiceSelection } from "@/components/voice-selection"
 
+// ---- Kokoro voices -------------------------------------------------------------------
+// Kokoro voice ids look like "af_heart": language letter (a = American, b = British English),
+// gender letter (f/m), underscore, name. Only English voices are offered: the other languages
+// need extra phonemizer packages that are not installed.
+const KOKORO_FALLBACK_VOICES = ["af_heart", "af_bella", "af_nicole", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"]
+const KOKORO_DEFAULT_VOICE = "af_heart"
+const KOKORO_VOICE_STORAGE_KEY = "mlxaudio.kokoroVoice"
+const KOKORO_GROUPS = [
+  { prefix: "af_", label: "American English \u00b7 Female" },
+  { prefix: "am_", label: "American English \u00b7 Male" },
+  { prefix: "bf_", label: "British English \u00b7 Female" },
+  { prefix: "bm_", label: "British English \u00b7 Male" },
+]
+const isKokoroModel = (modelName: string) => modelName.toLowerCase().includes("kokoro")
+const isEnglishKokoroVoice = (voice: string) => /^[ab][fm]_[a-z0-9_]+$/.test(voice)
+const kokoroVoiceLabel = (voice: string) => {
+  const name = voice.slice(3).replace(/_/g, " ")
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
 // Custom range input component with colored progress
 function RangeInput({
   min,
@@ -129,6 +149,41 @@ export default function SpeechSynthesis() {
   const [quantization, setQuantization] = useState("6bit")
   const [selectedVoice, setSelectedVoice] = useState("ryan")
   const [instruction, setInstruction] = useState("calm, measured narrator tone")
+  const [kokoroVoice, setKokoroVoice] = useState(KOKORO_DEFAULT_VOICE)
+  const [kokoroVoices, setKokoroVoices] = useState<string[]>(KOKORO_FALLBACK_VOICES)
+  // the saved choice may not exist in the list the server returned; fall back rather than show a blank
+  const shownKokoroVoice = kokoroVoices.includes(kokoroVoice) ? kokoroVoice : KOKORO_DEFAULT_VOICE
+
+  // Remember the chosen Kokoro voice between launches
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(KOKORO_VOICE_STORAGE_KEY)
+      if (saved && isEnglishKokoroVoice(saved)) setKokoroVoice(saved)
+    } catch {}
+  }, [])
+  const handleKokoroVoiceChange = (voice: string) => {
+    setKokoroVoice(voice)
+    try {
+      localStorage.setItem(KOKORO_VOICE_STORAGE_KEY, voice)
+    } catch {}
+  }
+
+  // Ask the server which voices the Kokoro model actually has; the built-in list is used until
+  // (or unless) that answers.
+  useEffect(() => {
+    if (!isKokoroModel(baseModel)) return
+    let cancelled = false
+    fetch(`${getApiUrl()}/v1/audio/voices?model=${encodeURIComponent(baseModel)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const ids: string[] = ((data && data.data) || []).map((v: { id: string }) => v.id).filter(isEnglishKokoroVoice)
+        if (!cancelled && ids.length > 0) setKokoroVoices(ids)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [baseModel])
 
   const [settingsOpen, setSettingsOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
@@ -305,12 +360,17 @@ export default function SpeechSynthesis() {
         ? qwen3Voices.includes(selectedVoice)
           ? selectedVoice
           : "ryan"
-        : "af_heart"
+        : isKokoroModel(model)
+          ? shownKokoroVoice
+          : "af_heart"
 
     return {
       model: model, // Or the specific model identifier if different
       input,
       voice: voice,
+      // Kokoro needs to know the language too: it defaults to American English, so a British
+      // voice would otherwise be read with American pronunciation rules.
+      ...(isKokoroModel(model) ? { lang_code: shownKokoroVoice[0] } : {}),
       speed: speed,
       // WAV keeps chunk boundaries gapless and makes merging for download simple
       response_format: "wav",
@@ -723,6 +783,37 @@ export default function SpeechSynthesis() {
                             {v}
                           </option>
                         ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-2 h-4 w-4 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isKokoroModel(baseModel) && (
+                <div className="mb-6">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm">Voice</span>
+                    <div className="relative">
+                      <select
+                        aria-label="Kokoro voice"
+                        className="flex w-40 appearance-none items-center justify-between rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-sm pr-8 bg-white dark:bg-gray-800"
+                        value={shownKokoroVoice}
+                        onChange={(e) => handleKokoroVoiceChange(e.target.value)}
+                      >
+                        {KOKORO_GROUPS.map((group) => {
+                          const voices = kokoroVoices.filter((v) => v.startsWith(group.prefix))
+                          if (voices.length === 0) return null
+                          return (
+                            <optgroup key={group.prefix} label={group.label}>
+                              {voices.map((v) => (
+                                <option key={v} value={v}>
+                                  {kokoroVoiceLabel(v)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })}
                       </select>
                       <ChevronDown className="absolute right-2 top-2 h-4 w-4 pointer-events-none" />
                     </div>
