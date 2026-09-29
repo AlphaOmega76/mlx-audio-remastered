@@ -8,7 +8,11 @@ PACKAGING_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$PACKAGING_DIR/../.." && pwd)"
 PY="${PYTHON:-/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14}"
 
-VERSION="$("$PY" -c 'import sys; sys.path.insert(0, "'"$REPO_ROOT"'"); import mlx_audio.version as v; print(v.__version__)' 2>/dev/null || echo dev)"
+VERSION="$("$PY" -c 'import sys; sys.path.insert(0, "'"$REPO_ROOT"'"); import mlx_audio.version as v; print(v.__version__)' 2>/dev/null || true)"
+if [ -z "$VERSION" ]; then
+  echo "Warning: could not read the version using '$PY' (set PYTHON=/path/to/python3 to fix); naming the zip '-dev'." >&2
+  VERSION=dev
+fi
 STAGE="$(mktemp -d)"
 BUNDLE="MLX-Audio-Installer"
 OUT_ZIP="$HOME/Desktop/MLX-Audio-Installer-$VERSION.zip"
@@ -23,6 +27,8 @@ rsync -a \
   --exclude ".github" \
   --exclude "browser-extension" \
   --exclude "docs" \
+  --exclude "CLAUDE.md" \
+  --exclude ".scratch" \
   --exclude "packaging" \
   --exclude "tests" \
   --exclude "*.egg-info" \
