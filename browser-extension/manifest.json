@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Read web pages aloud with your local MLX-Audio server, with follow-along highlighting.",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "scripting", "contextMenus", "offscreen", "storage"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqO6RcpFqNaBrcZFgnJNkRYnQmQxfFWz2/7bJrfv24wPBrQJULs8nfVOWOhdSbrSXEsdc2so4X1g+WYydcPnjwoIuSQp8/YEw0LXp3xzwwOzAH3Qs0W5hEOodPW1iUOy7o8W66St3KQJKo+okj4w+tH17107HKfHEUH7uRJx1IGr6n9Oj7qDI8Hr87bfoIAsp9nPBGxuOzMvtDCZrKO2xl2m/lygbGJhQ6XLqVoFySxsAH509hUkpcqK35+jJBHlobrGr/tcYL5eLpL5r3DfSEa2Dxk8qZO/WZ/BJnJJy2y5H25u4hGLfyFNYngJLr+29gjMJIlDR0JybwcxwShngWQIDAQAB",
+  "permissions": ["activeTab", "scripting", "contextMenus", "offscreen", "storage", "nativeMessaging"],
   "host_permissions": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"],
   "background": {
     "service_worker": "background.js",

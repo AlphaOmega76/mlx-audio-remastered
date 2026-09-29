@@ -20,6 +20,113 @@ const limitFor = (i) => RAMP[i] ?? CHUNK_MAX
 
 let session = null
 
+// ---- starting the server -----------------------------------------------------------------
+// A Chrome extension cannot start programs, so the installer registers a small native helper
+// (mlx_audio/native_host.py). Connecting to it starts the MLX-Audio server on demand; Chrome
+// closes the connection when the extension stops running (Chrome quits, or the extension is
+// disabled, removed or reloaded), and the helper then stops the server it started. It never
+// stops a server it did not start. While the connection is open it also keeps this service
+// worker alive.
+const NATIVE_HOST = "com.mlxaudio.host"
+// the very first launch after installing can take several minutes (macOS checks the new files)
+const SERVER_START_TIMEOUT_MS = 16 * 60 * 1000
+
+let hostPort = null // the open connection to the helper, if any
+const hostListeners = new Set() // functions called with each message from the helper
+
+// The port number when the server URL points at this computer, otherwise null.
+function localPort(serverUrl) {
+  try {
+    const u = new URL(serverUrl)
+    if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return null
+    return Number(u.port) || null
+  } catch {
+    return null
+  }
+}
+
+async function serverIsUp(serverUrl) {
+  try {
+    return (await fetch(`${serverUrl}/v1/models`, { signal: AbortSignal.timeout(2500) })).ok
+  } catch {
+    return false
+  }
+}
+
+// Connects to the helper (once). Resolves true if it answered, false if it is not installed.
+function openHost() {
+  if (hostPort) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    let settled = false
+    let port
+    const done = (ok) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (!ok && port) {
+        try { port.disconnect() } catch {}
+      }
+      resolve(ok)
+    }
+    const timer = setTimeout(() => done(false), 5000)
+    try {
+      port = chrome.runtime.connectNative(NATIVE_HOST)
+    } catch {
+      return done(false)
+    }
+    port.onMessage.addListener((msg) => {
+      if (msg && msg.type === "pong") {
+        hostPort = port
+        done(true)
+      } else if (msg) {
+        for (const fn of hostListeners) fn(msg)
+      }
+    })
+    port.onDisconnect.addListener(() => {
+      void chrome.runtime.lastError // "Specified native messaging host not found" when not installed
+      if (hostPort === port) hostPort = null
+      done(false)
+      for (const fn of hostListeners) fn({ type: "status", state: "error", detail: "the helper closed the connection" })
+    })
+    port.postMessage({ cmd: "ping" })
+  })
+}
+
+// Makes sure the server is answering, asking the helper to start it if needed.
+async function ensureServer(settings, onNote) {
+  if (await serverIsUp(settings.serverUrl)) return { ok: true }
+  const port = localPort(settings.serverUrl)
+  if (!port || !(await openHost())) {
+    return { ok: false, error: "Cannot reach the MLX-Audio server. Open the MLX-Audio app first." }
+  }
+  if (onNote) await onNote("Starting the MLX-Audio server… the very first time can take a few minutes.")
+  return new Promise((resolve) => {
+    const finish = (result) => {
+      clearTimeout(timer)
+      hostListeners.delete(listener)
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish({ ok: false, error: "The MLX-Audio server did not start in time." }), SERVER_START_TIMEOUT_MS)
+    const listener = (msg) => {
+      if (msg.type !== "status") return
+      if (msg.state === "up") finish({ ok: true })
+      else if (msg.state === "error") {
+        const why = msg.detail ? ` (${msg.detail})` : ""
+        finish({ ok: false, error: `The MLX-Audio server could not start${why}. Details: ~/Library/Logs/MLX-Audio.log` })
+      }
+    }
+    hostListeners.add(listener)
+    hostPort.postMessage({ cmd: "start", port })
+  })
+}
+
+async function serverStatus() {
+  const settings = await getSettings()
+  const up = await serverIsUp(settings.serverUrl)
+  const canStart = !up && localPort(settings.serverUrl) ? await openHost() : false
+  return { up, canStart }
+}
+
 // ---- session state (kept in storage.session so it survives the worker sleeping) ----
 
 async function loadSession() {
@@ -33,10 +140,10 @@ async function saveSession() {
 
 function publicState() {
   if (!session) return { status: "idle" }
-  const { tabId, title, url, mode, status, error, cur, chunkCount, generated, curSentence, sentenceCount, time, duration } = session
+  const { tabId, title, url, mode, status, error, note, cur, chunkCount, generated, curSentence, sentenceCount, time, duration } = session
   const frac = duration > 0 ? Math.min(1, time / duration) : 0
   return {
-    status, error, tabId, title, url, mode, cur, chunkCount, generated, curSentence, sentenceCount,
+    status, error, note, tabId, title, url, mode, cur, chunkCount, generated, curSentence, sentenceCount,
     progress: chunkCount ? (cur + frac) / chunkCount : 0,
   }
 }
@@ -192,6 +299,17 @@ async function start(tabId) {
   await saveSession()
   await broadcast()
 
+  // Start the server through the helper if it is not running yet (can take minutes the first time).
+  const mine = session
+  const server = await ensureServer(settings, async (note) => {
+    session.note = note
+    await saveSession()
+    await broadcast()
+  })
+  if (session !== mine) return // stopped or restarted while waiting
+  if (!server.ok) return fail(server.error)
+  session.note = null
+
   await ensureOffscreen()
   toPlayer({ type: "load", texts: session.texts, pauses: session.pauses, narrationId: session.narrationId, settings, seq: 0 })
 }
@@ -293,6 +411,8 @@ async function onProgress(msg) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.target !== "background") return
   ;(async () => {
+    if (msg.type === "serverStatus") return sendResponse(await serverStatus())
+    if (msg.type === "ensureServer") return sendResponse(await ensureServer(await getSettings()))
     switch (msg.type) {
       case "start": await start(msg.tabId); break
       case "togglePause": await togglePause(); break

@@ -13,7 +13,7 @@ const ACTIVE = ["loading", "playing", "paused", "buffering"]
 function statusText(s) {
   const what = s.mode === "selection" ? "selection" : "article"
   switch (s.status) {
-    case "loading": return "Preparing… the first part takes a few seconds"
+    case "loading": return s.note || "Preparing… the first part takes a few seconds"
     case "buffering": return "Generating the next part…"
     case "paused": return `Paused · part ${s.cur + 1} of ${s.chunkCount}`
     case "playing": return `Reading the ${what} · part ${s.cur + 1} of ${s.chunkCount}`
@@ -64,15 +64,19 @@ async function labelReadButton() {
 
 async function checkServer() {
   const settings = await getSettings()
+  let up = false
   try {
-    const res = await fetch(`${settings.serverUrl}/v1/models`, { signal: AbortSignal.timeout(2500) })
-    serverOk = res.ok
-  } catch {
-    serverOk = false
-  }
+    up = (await fetch(`${settings.serverUrl}/v1/models`, { signal: AbortSignal.timeout(2500) })).ok
+  } catch {}
+  // If the server is not running but the installed helper can start it, pressing Read is fine.
+  const status = up ? null : await send({ type: "serverStatus" })
+  const canStart = !!(status && status.canStart)
+  serverOk = up || canStart
   const notice = $("server")
-  notice.textContent = `Can't reach the MLX-Audio server at ${settings.serverUrl}. Open the MLX-Audio app first.`
-  notice.classList.toggle("hidden", serverOk)
+  notice.textContent = canStart
+    ? "The MLX-Audio server isn't running yet. It will start when you press Read."
+    : `Can't reach the MLX-Audio server at ${settings.serverUrl}. Open the MLX-Audio app first.`
+  notice.classList.toggle("hidden", up)
   render()
 }
 
