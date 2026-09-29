@@ -809,10 +809,7 @@ export default function SpeechSynthesis() {
           </button>
 
           <div className="flex flex-col justify-between h-full flex-1 px-4 py-2">
-            <div className="flex items-center justify-between w-full">
-              <div className="text-sm">
-                {text.trim() ? `${selectedVoice}: ${text.length > 20 ? text.substring(0, 20) + "..." : text}` : selectedVoice}
-              </div>
+            <div className="flex items-center justify-end w-full">
               <div className="flex items-center space-x-2">
                 <button
                   className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
