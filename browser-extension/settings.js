@@ -17,6 +17,7 @@ export const MODELS = [
     id: "mlx-community/Kokoro-82M-bf16",
     label: "Kokoro",
     supportsInstruction: false,
+    langFromVoice: true, // the voice id starts with its language: a = American English, b = British English
     voices: ["af_heart", "af_bella", "af_nicole", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"],
   },
 ]
@@ -51,6 +52,9 @@ export function buildSpeechBody(settings, input, chunk = {}) {
     model: model.id,
     input,
     voice: settings.voice,
+    // Kokoro assumes American English unless told otherwise, so a British voice (bf_emma,
+    // bm_george) would be read with American pronunciation rules without this.
+    ...(model.langFromVoice ? { lang_code: String(settings.voice)[0] } : {}),
     speed: Number(settings.speed) || 1,
     response_format: "wav",
     trim_silence: true,
