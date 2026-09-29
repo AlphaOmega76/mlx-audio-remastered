@@ -64,6 +64,13 @@ sts = [
     "setuptools<81", # pinned because >=81 drops pkg_resources which breaks webrtcvad
 ]
 
+# Native macOS window: `python -m mlx_audio.app_window` (a real app window instead of a
+# browser tab; see packaging/friends-and-family). Not part of "all" on purpose: it only makes
+# sense on macOS and most users of the library never need a GUI.
+desktop = [
+    "pywebview>=6.0; sys_platform == 'darwin'",
+]
+
 # Full installation (all features)
 all = [
     "mistral-common[audio]",
