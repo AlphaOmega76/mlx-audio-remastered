@@ -122,8 +122,9 @@ docs = [
 "mlx_audio.sts.generate" = "mlx_audio.sts.generate:main"
 
 [project.urls]
-Homepage = "https://github.com/Blaizzy/mlx-audio"
-Repository = "https://github.com/Blaizzy/mlx-audio"
+Homepage = "https://github.com/AlphaOmega76/mlx-audio-remastered"
+Repository = "https://github.com/AlphaOmega76/mlx-audio-remastered"
+Upstream = "https://github.com/Blaizzy/mlx-audio"
 
 [tool.poetry]
 version = "0.0.0"
