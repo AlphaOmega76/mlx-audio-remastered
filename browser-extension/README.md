@@ -21,7 +21,8 @@ Works in Chrome and other Chromium-based browsers (Brave, Edge, Arc).
 - **Controls** (in the popup): pause/resume, previous/next paragraph, stop. Narration keeps
   playing if you close the popup or switch tabs. It stops when the tab closes or navigates away.
 - **Settings** (popup → Settings): server address, voice model, voice, speaking style, speed.
-  The defaults match the MLX-Audio web app (Qwen3-TTS, voice `ryan`, "calm, measured narrator tone").
+  The default is Kokoro (voice `af_heart`); Qwen3-TTS is also selectable, with its own voices
+  and a speaking-style instruction (default "calm, measured narrator tone").
 
 ## How it works
 
