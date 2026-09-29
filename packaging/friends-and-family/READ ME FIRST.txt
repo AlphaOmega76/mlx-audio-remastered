@@ -17,15 +17,14 @@ This needs an Apple Silicon Mac (M1 or later).
 3. A Terminal window will open and show progress. The first run downloads some things
    and can take several minutes — this is normal, let it finish.
 
-4. When it says "Done", open your Applications folder. You'll see two new icons:
-     - "MLX-Audio" — double-click this to start it. Your web browser will open
-       automatically once it's ready.
-     - "Stop MLX-Audio" — double-click this when you're done, to free up memory.
+4. When it says "Done", open your Applications folder and double-click "MLX-Audio".
+   It opens in its own window, like any other app. When you're done, close the window (or
+   press Cmd+Q) — that quits it and frees up the memory it was using.
 
-   The very first time you double-click "MLX-Audio", it can take several minutes before
-   your browser opens (macOS checks all the newly installed files the first time they
-   run). This only happens once — after that, starting it is quick. If it hasn't opened
-   after 10 minutes, try double-clicking "MLX-Audio" again.
+   The very first time you open "MLX-Audio", it can take several minutes before the
+   window shows the app (macOS checks all the newly installed files the first time they
+   run; the window says "Starting MLX-Audio" meanwhile). This only happens once — after
+   that, starting it is quick. If it shows an error, close it and open "MLX-Audio" again.
 
 5. The first time you pick a voice, it downloads that voice's files, which can take a
    little while depending on your internet connection. After that it's cached and fast.

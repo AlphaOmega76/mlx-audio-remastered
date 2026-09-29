@@ -42,9 +42,9 @@ rsync -a \
 echo "== Adding the installer =="
 cp "$PACKAGING_DIR/install.command" "$STAGE/$BUNDLE/"
 cp "$PACKAGING_DIR/uninstall.command" "$STAGE/$BUNDLE/"
-cp "$PACKAGING_DIR/make_launchers.sh" "$STAGE/$BUNDLE/"
+cp "$PACKAGING_DIR/make_app.sh" "$PACKAGING_DIR/MLX-Audio.icns" "$STAGE/$BUNDLE/"
 cp "$PACKAGING_DIR/READ ME FIRST.txt" "$STAGE/$BUNDLE/"
-chmod +x "$STAGE/$BUNDLE/install.command" "$STAGE/$BUNDLE/uninstall.command" "$STAGE/$BUNDLE/make_launchers.sh"
+chmod +x "$STAGE/$BUNDLE/install.command" "$STAGE/$BUNDLE/uninstall.command" "$STAGE/$BUNDLE/make_app.sh"
 
 echo "== Zipping =="
 rm -f "$OUT_ZIP"

@@ -36,8 +36,9 @@ To use it:
   - Or select some text on a page, right-click it, and choose "Read aloud with MLX-Audio".
   - Use the popup's controls to pause, skip to the next/previous paragraph, or stop.
 
-If it says it can't reach the server: make sure the MLX-Audio app is running (double-click
-"MLX-Audio" in your Applications folder).
+If it says it can't reach the server: make sure the MLX-Audio app is open (double-click
+"MLX-Audio" in your Applications folder). The extension only works while the MLX-Audio
+window is open — closing the window quits the app. You can minimize it instead.
 
 To remove this extension later: go to chrome://extensions and click "Remove" on
 "MLX-Audio Reader".

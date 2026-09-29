@@ -18,8 +18,10 @@ case "$REPLY" in
   *) echo "Cancelled."; exit 0 ;;
 esac
 
-echo "Stopping the server, if it's running…"
-# the server runs as a launchd job (which restarts it if killed), so remove the job first
+echo "Closing MLX-Audio and stopping the server, if they're running…"
+# the app window (it stops its own server too, but don't rely on that here)
+pkill -f "mlx_audio.app_window" 2>/dev/null || true
+# older versions ran the server as a launchd job (which restarts it if killed), so remove the job first
 launchctl remove "com.mlxaudio.server.$PORT" >/dev/null 2>&1 || true
 # listeners only: plain `lsof -ti:PORT` also returns processes merely connected to the port
 # (e.g. a browser tab), and this must not kill those

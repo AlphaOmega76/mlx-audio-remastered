@@ -39,35 +39,46 @@ Send both zips to your friend, or just the app zip if they don't want the extens
 3. Copies the bundled source to `~/Library/Application Support/MLX-Audio/app`.
 4. Creates a private virtual environment at `~/Library/Application Support/MLX-Audio/venv`
    (does not touch any other Python installation on their Mac).
-5. `pip install`s the app into that venv with the `[all,server]` extras.
-6. Runs `make_launchers.sh`, which compiles two tiny AppleScript apps with `osacompile`
-   (a standard macOS tool) into `/Applications`: **MLX-Audio** (starts the server, opens
-   the browser once it's ready) and **Stop MLX-Audio** (kills whatever's on the port).
+5. `pip install`s the app into that venv with the `[all,server,desktop]` extras (`desktop`
+   adds `pywebview`, which provides the native window).
+6. Runs `make_app.sh`, which builds a real app bundle, `MLX-Audio.app`, in `/Applications`
+   with its own name and icon (`MLX-Audio.icns`, drawn by `make_icon.py`). Opening it runs
+   `python -m mlx_audio.app_window` from the private environment: a native window on the
+   server. **Closing the window or pressing Cmd+Q quits the app and stops the server** (there is
+   no separate Stop icon any more). A server that was already running on the port is left alone.
 7. Copies `uninstall.command` to their Desktop so it's always around later, even if they
    delete the original zip/download.
 
-If `/Applications` isn't writable (a standard, non-admin Mac account), the icons go in
+If `/Applications` isn't writable (a standard, non-admin Mac account), the app goes in
 `~/Applications` instead; this is checked up front so it can't fail after the long download.
-The Stop app and the uninstaller stop only the process *listening* on the port
+The uninstaller stops only the process *listening* on the port
 (`lsof -ti tcp:PORT -sTCP:LISTEN`), never other processes merely connected to it, like a
-browser tab. The uninstaller leaves downloaded voice models in `~/.cache/huggingface` (they
-are shared with other tools) and tells the user so.
+browser tab. It leaves downloaded voice models in `~/.cache/huggingface` (they are shared
+with other tools) and tells the user so.
 
 For same-machine testing, override locations with `MLXA_APP_SUPPORT`, `MLXA_APPS_DIR`,
 `MLXA_PORT`, `MLXA_DESKTOP` and `MLXA_LOG_FILE` (see the top of `install.command`).
 
-**Why two separate app icons instead of one that starts and stops on quit** (like your own
-Automator launcher): reliably detecting "the user quit the app" from a script running via
-`do shell script` isn't something I could verify without testing on a real second Mac, so
-this trades a second icon for something that's simple enough to actually test — and it was
-tested end-to-end (start, reaches the server, stop, confirmed the port is freed).
+**How the window app works (`mlx_audio/app_window.py`).**
+- The server is started as a child in its own process group, wrapped in a tiny shell
+  watchdog that kills it within about a second if the window app disappears for *any* reason.
+  This matters because Cmd+Q ends the process without giving Python a chance to clean up.
+  `tests/test_app_window.py` force-kills a stand-in owner and checks the server dies.
+- The server needs `--log-dir` and a home-folder working directory: from a read-only
+  working directory it crashes with `Read-only file system: 'logs'`.
+- Downloads (the WAV and text "Download" buttons) go through a native Save panel
+  (`webview.settings["ALLOW_DOWNLOADS"]`); links that open new tabs go to the default browser.
+- The menu bar, About and Quit items are renamed from code (`_brand_app`), because they take
+  the name of the process's main bundle ("Python") rather than of `MLX-Audio.app`. The Dock
+  icon and window title come from the app bundle itself.
+- The Chrome extension talks to the same server, so it **only works while the MLX-Audio window
+  is open** (it can be minimized).
 
-**Known real bug this caught and fixed:** the server writes a small `logs/` folder
-relative to its working directory unless told otherwise. Launched via `do shell script`,
-the working directory isn't writable, so the server would crash on startup with
-`OSError: [Errno 30] Read-only file system: 'logs'`. Fixed by passing `--log-dir` pointing
-at a folder inside Application Support, and by `cd`-ing to the user's home folder first
-for good measure. If you ever edit `make_launchers.sh`, keep that flag.
+**Why the older design was replaced.** It was two AppleScript apps (Start, Stop) that opened
+a browser tab. Starting the server from the AppleScript app as a child made that app never
+quit (it ignored `quit`, `tell me to quit`, SIGTERM and a stay-open `on reopen` handler), so
+"Stop, then start again" did nothing, and it was worked around with `launchctl submit`.
+Making the window app itself own the server removes all of that.
 
 **Testing notes:** the whole install → start → stop flow was tested twice:
 
@@ -84,13 +95,13 @@ for good measure. If you ever edit `make_launchers.sh`, keep that flag.
    - **A quoting bug:** the venv's Python path (`.../Application Support/...` — note the
      space) wasn't quoted in the generated shell command, so `nohup` tried to run
      `Application` as the command and treated the rest as arguments. Fixed by
-     single-quoting the substituted paths in `make_launchers.sh`.
+     single-quoting the substituted paths in `make_app.sh`.
    - **A timeout that was much too short:** the very first time the freshly installed
      Python actually runs the server, macOS checks all the newly installed compiled
      libraries (scipy, mlx, numpy, etc.) for the first time, which took about **8 minutes**
      on the test VM — every run after that was instant. The launcher's retry window was
      90 seconds, so a perfectly good install looked like a failure. Raised to 10 minutes,
-     and the messaging in `make_launchers.sh` and "READ ME FIRST.txt" now sets that
+     and the messaging in `make_app.sh` and "READ ME FIRST.txt" now sets that
      expectation instead of looking frozen or broken.
 
    The VM test image (Cirrus Labs' `macos-sequoia-base`, used for CI, not a stand-in for a
@@ -104,8 +115,8 @@ for good measure. If you ever edit `make_launchers.sh`, keep that flag.
 
 ## Extras installed
 
-`pip install "...[all,server]"` — `all` covers TTS/STT/STS, `server` adds the FastAPI/
-uvicorn/pypdf bits the web UI's PDF-drop feature needs. (The `all` extra alone is missing
+`pip install "...[all,server,desktop]"` — `all` covers TTS/STT/STS, `server` adds the FastAPI/
+uvicorn/pypdf bits the web UI's PDF-drop feature needs, and `desktop` adds `pywebview` for the window. (The `all` extra alone is missing
 `pypdf`, which looks like a small gap in the upstream project's own extras, not something
 specific to this installer.)
 
