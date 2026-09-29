@@ -138,6 +138,8 @@ mlx_audio = [
     "tts/*.css",
     "tts/**/*.json",
     "tts/static/**/*",
+    # The pre-built Next.js UI (see MANIFEST.in for why this needs to be built first).
+    "ui/out/**/*",
 ]
 
 [tool.black]

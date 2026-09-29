@@ -7,6 +7,12 @@ recursive-include mlx_audio/tts *.mjs
 recursive-include mlx_audio/tts *.css
 recursive-include mlx_audio/tts *.md
 
+# The pre-built static export of the Next.js UI (mlx_audio/ui_static.py serves this at
+# runtime). It only exists after `cd mlx_audio/ui && npm run build`, and is git-ignored
+# during development, but a distributable package needs it so `pip install` gives a
+# working UI without requiring Node on the installing machine.
+recursive-include mlx_audio/ui/out *
+
 # Exclude large directories
 prune mlx_audio/ui/node_modules
 prune mlx_audio/ui/.next
