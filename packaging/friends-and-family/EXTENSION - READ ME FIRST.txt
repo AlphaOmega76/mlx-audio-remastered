@@ -5,8 +5,9 @@ This is a Chrome extension that reads web pages aloud using your MLX-Audio app. 
 on the Chrome Web Store, so Chrome needs a few extra steps to install it — this is normal
 for extensions shared directly rather than through the store, not a sign anything is wrong.
 
-Before you start: install and open the MLX-Audio app first (see the other zip you got,
-"MLX-Audio-Installer"). This extension needs that app running to work.
+Before you start: install the MLX-Audio app first (see the other zip you got,
+"MLX-Audio-Installer"). The installer also sets things up so this extension can start
+MLX-Audio's speech server by itself.
 
 1. Unzip this folder if you haven't already, and keep it somewhere permanent (don't
    delete it after installing — Chrome needs to keep reading the files from here).
@@ -36,9 +37,19 @@ To use it:
   - Or select some text on a page, right-click it, and choose "Read aloud with MLX-Audio".
   - Use the popup's controls to pause, skip to the next/previous paragraph, or stop.
 
-If it says it can't reach the server: make sure the MLX-Audio app is open (double-click
-"MLX-Audio" in your Applications folder). The extension only works while the MLX-Audio
-window is open — closing the window quits the app. You can minimize it instead.
+You do NOT need to open the MLX-Audio app first: the first time you press "Read" the
+extension starts the speech server by itself (the popup says so; the very first time after
+installing can take a few minutes), and it shuts the server down again when Chrome quits or
+you turn the extension off. If you also have the MLX-Audio app open, they share the same
+server, and the extension never stops a server that the app started.
+
+Important — if you installed an earlier version of this extension: remove it first
+(chrome://extensions, "Remove") and then load this one. This version has a fixed identity
+so the helper knows it is allowed to talk to it, and Chrome treats it as a different
+extension (your extension settings will reset).
+
+If it says it can't reach the server: open the MLX-Audio app once (double-click "MLX-Audio"
+in your Applications folder). That also happens if the installer's helper setup was skipped.
 
 To remove this extension later: go to chrome://extensions and click "Remove" on
 "MLX-Audio Reader".

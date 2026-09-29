@@ -9,6 +9,7 @@ APP_SUPPORT="${MLXA_APP_SUPPORT:-$HOME/Library/Application Support/$APP_NAME}"
 APPS_DIR="${MLXA_APPS_DIR:-/Applications}"
 PORT="${MLXA_PORT:-8000}"
 LOG_FILE="${MLXA_LOG_FILE:-$HOME/Library/Logs/MLX-Audio.log}"
+BROWSERS_ROOT="${MLXA_BROWSERS_ROOT:-$HOME/Library/Application Support}"
 
 echo "This will remove MLX-Audio (the app, its Python environment, and its files)."
 printf "Continue? [y/N] "
@@ -30,6 +31,13 @@ kill $(lsof -ti tcp:"$PORT" -sTCP:LISTEN) 2>/dev/null || true
 echo "Removing app icons…"
 rm -rf "$APPS_DIR/MLX-Audio.app" "$APPS_DIR/Stop MLX-Audio.app"
 rm -rf "$HOME/Applications/MLX-Audio.app" "$HOME/Applications/Stop MLX-Audio.app"
+
+echo "Removing the Chrome extension helper…"
+# (done by hand, not through Python, so it works even if the environment is already broken)
+pkill -f "mlx_audio.native_host" 2>/dev/null || true
+for d in "Google/Chrome" "Chromium" "BraveSoftware/Brave-Browser" "Microsoft Edge" "Arc/User Data"; do
+  rm -f "$BROWSERS_ROOT/$d/NativeMessagingHosts/com.mlxaudio.host.json"
+done
 
 echo "Removing files…"
 rm -rf "$APP_SUPPORT"

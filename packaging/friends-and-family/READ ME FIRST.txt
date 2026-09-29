@@ -29,6 +29,9 @@ This needs an Apple Silicon Mac (M1 or later).
 5. The first time you pick a voice, it downloads that voice's files, which can take a
    little while depending on your internet connection. After that it's cached and fast.
 
+The Chrome extension (separate zip, optional) can start MLX-Audio's speech server by itself,
+so you don't have to open the app first when you only want it to read web pages aloud.
+
 To remove everything later: double-click "Uninstall MLX-Audio.command" on your Desktop
 (it's placed there automatically during install).
 

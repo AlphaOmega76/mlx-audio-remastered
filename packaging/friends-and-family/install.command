@@ -12,10 +12,14 @@
 #                                                closing the window quits it and stops the server.
 #                                                Falls back to ~/Applications if /Applications
 #                                                isn't writable, as on non-admin Mac accounts)
+#   ~/Library/Application Support/MLX-Audio/native-host.sh, plus a small registration file in
+#     each installed Chrome/Brave/Edge/Arc/Chromium profile folder (NativeMessagingHosts/):
+#                                               lets the Chrome extension start and stop the
+#                                               server on its own
 #   ~/Desktop/Uninstall MLX-Audio.command        (removes everything above)
 #
-# Advanced/testing: set MLXA_APP_SUPPORT, MLXA_APPS_DIR, MLXA_PORT, MLXA_DESKTOP or
-# MLXA_LOG_FILE to override the locations above (used to test this script without touching
+# Advanced/testing: set MLXA_APP_SUPPORT, MLXA_APPS_DIR, MLXA_PORT, MLXA_DESKTOP,
+# MLXA_LOG_FILE or MLXA_BROWSERS_ROOT to override the locations above (used to test this script without touching
 # a real install). The fallback to ~/Applications only happens when MLXA_APPS_DIR is unset;
 # if an override is set but not writable, the script stops instead.
 set -e
@@ -120,6 +124,15 @@ fi
 # ---- launcher apps -------------------------------------------------------------------
 say "Creating the app"
 "$SCRIPT_DIR/make_app.sh" "$VENV/bin/python3" "$PORT" "$APPS_DIR" "$APP_SUPPORT/logs"
+
+# ---- let the Chrome extension start and stop the server -----------------------------------
+say "Setting up the Chrome extension helper"
+helper_args=()
+[ -n "${MLXA_BROWSERS_ROOT:-}" ] && helper_args=(--browsers-root "$MLXA_BROWSERS_ROOT")
+if ! "$VENV/bin/python3" -m mlx_audio.native_host --register --python "$VENV/bin/python3" \
+    --support-dir "$APP_SUPPORT" "${helper_args[@]}"; then
+  echo "(Couldn't set that up. The MLX-Audio app still works; the Chrome extension will need the app open.)"
+fi
 
 # ---- a durable uninstaller, independent of where this download ends up ----------------
 mkdir -p "$DESKTOP"

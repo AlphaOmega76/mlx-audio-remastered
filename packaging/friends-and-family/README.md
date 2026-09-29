@@ -71,8 +71,19 @@ For same-machine testing, override locations with `MLXA_APP_SUPPORT`, `MLXA_APPS
 - The menu bar, About and Quit items are renamed from code (`_brand_app`), because they take
   the name of the process's main bundle ("Python") rather than of `MLX-Audio.app`. The Dock
   icon and window title come from the app bundle itself.
-- The Chrome extension talks to the same server, so it **only works while the MLX-Audio window
-  is open** (it can be minimized).
+- The Chrome extension talks to the same server. With the helper registered (next paragraph) it
+  starts the server itself, so the window does not need to be open; without it, the extension
+  only works while the MLX-Audio window is open (it can be minimized).
+
+**The Chrome extension helper.** `install.command` runs `python -m mlx_audio.native_host
+--register`, which writes `~/Library/Application Support/MLX-Audio/native-host.sh` and a small
+`NativeMessagingHosts/com.mlxaudio.host.json` inside each installed Chrome/Chromium/Brave/Edge/Arc
+profile folder (only browsers that are present). Chrome launches the helper when the extension
+connects; the helper starts the server on demand and stops the one it started when Chrome closes
+the connection (Chrome quits, or the extension is disabled, removed or reloaded). The uninstaller
+removes the registrations by hand, without needing Python. Details: `browser-extension/README.md`.
+The extension gets a fixed ID from the `key` in its manifest, so friends who loaded an earlier
+version must remove it and load the new one once.
 
 **Why the older design was replaced.** It was two AppleScript apps (Start, Stop) that opened
 a browser tab. Starting the server from the AppleScript app as a child made that app never
