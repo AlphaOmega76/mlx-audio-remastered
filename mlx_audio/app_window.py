@@ -173,6 +173,45 @@ def _brand_app(name: str) -> None:
         pass
 
 
+def _allow_microphone() -> None:
+    """Let pages in the window use the microphone (for live transcription).
+
+    pywebview does not do this itself, and inside an app bundle the web view then hides
+    ``navigator.mediaDevices`` completely ("undefined is not an object"). Call before the window
+    is created. macOS still shows its own "allow microphone" prompt the first time.
+    """
+    try:
+        import objc
+        from webview.platforms import cocoa
+
+        def grant(self, web_view, origin, frame, media_type, decision_handler):
+            decision_handler(1)  # WKPermissionDecisionGrant
+
+        selector = objc.selector(
+            grant,
+            selector=b"webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
+            signature=b"v@:@@@q@?",
+        )
+        objc.classAddMethods(cocoa.BrowserView.BrowserDelegate, [selector])
+    except Exception as exc:  # the app still works without it, only the microphone does not
+        print(f"Could not enable the microphone: {exc}", file=sys.stderr)
+
+
+def _enable_media_devices() -> None:
+    """Turn on the web view's media-devices preference (needs the window to exist)."""
+    try:
+        from PyObjCTools import AppHelper
+        from webview.platforms import cocoa
+
+        def apply():
+            for view in list(cocoa.BrowserView.instances.values()):
+                view.webview.configuration().preferences().setValue_forKey_(True, "mediaDevicesEnabled")
+
+        AppHelper.callAfter(apply)
+    except Exception as exc:
+        print(f"Could not enable the microphone: {exc}", file=sys.stderr)
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="mlx_audio.app_window", description=__doc__.split("\n\n")[0])
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -209,6 +248,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # handler never gets to run (SIGTERM left the app and its server running in testing). The
     # default action ends the process at once and the watchdog then stops the server.
 
+    _allow_microphone()
     webview.settings["ALLOW_DOWNLOADS"] = True  # the "Download" buttons save through a native Save panel
     window = webview.create_window(
         APP_NAME,
@@ -223,6 +263,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     window.events.closing += shutdown
 
     def boot():
+        _enable_media_devices()
+        time.sleep(0.5)  # let the preference land before the page loads
         state = "up" if proc is None else wait_for_server(args.port, proc)
         if state == "up":
             window.load_url(url)

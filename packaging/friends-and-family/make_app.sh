@@ -64,16 +64,46 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Why the app carries its own copy of Python's executable: the process that really runs is
+# Python.app from the Python installation, which belongs to the Python Software Foundation, is
+# locked down with the hardened runtime and has no microphone permission. macOS then refuses the
+# microphone silently: no prompt, and the app never appears under Privacy > Microphone (live
+# transcription fails). A copy signed as MLX-Audio runs under this app's own identity and its
+# NSMicrophoneUsageDescription, so macOS asks. If anything below does not work out, the app falls
+# back to the old way (run the Python directly): everything works except the microphone.
+PY_EXEC="$VENV_PYTHON"
+if BASE_BIN="$("$VENV_PYTHON" -c 'import sys,os;print(os.path.join(sys.base_prefix,"Resources","Python.app","Contents","MacOS","Python"))' 2>/dev/null)" \
+   && [ -x "$BASE_BIN" ]; then
+  if cp "$BASE_BIN" "$APP/Contents/MacOS/MLX-Audio-python"; then
+    PY_EXEC="$APP/Contents/MacOS/MLX-Audio-python"
+    # In a virtual environment, tell the copy about it: a pyvenv.cfg next to the executable's
+    # folder makes Python use <Contents>/lib/pythonX.Y/site-packages, which links to the real one.
+    VENV_INFO="$("$VENV_PYTHON" -c 'import sys,site;print(sys.prefix!=sys.base_prefix);print(site.getsitepackages()[0]);print("%d.%d"%sys.version_info[:2]);print(sys.base_prefix+"/bin")' 2>/dev/null)" || VENV_INFO=""
+    if [ "$(echo "$VENV_INFO" | sed -n 1p)" = "True" ]; then
+      SITE_PKGS="$(echo "$VENV_INFO" | sed -n 2p)"
+      PYVER="$(echo "$VENV_INFO" | sed -n 3p)"
+      BASE_BIN_DIR="$(echo "$VENV_INFO" | sed -n 4p)"
+      mkdir -p "$APP/Contents/lib/python$PYVER"
+      ln -s "$SITE_PKGS" "$APP/Contents/lib/python$PYVER/site-packages"
+      printf 'home = %s\ninclude-system-site-packages = false\nversion = %s\n' "$BASE_BIN_DIR" "$PYVER" > "$APP/Contents/pyvenv.cfg"
+    fi
+  else
+    rm -f "$APP/Contents/MacOS/MLX-Audio-python"
+  fi
+else
+  echo "Note: could not find Python's own executable; the microphone will not work in the app." >&2
+fi
+
 # %q shell-quotes each value, so paths with spaces, quotes or & are safe.
 {
   echo '#!/bin/sh'
   printf 'exec %q -m mlx_audio.app_window --port %q --log-dir %q --log-file %q\n' \
-    "$VENV_PYTHON" "$PORT" "$SERVER_LOG_DIR" "$LOG_FILE"
+    "$PY_EXEC" "$PORT" "$SERVER_LOG_DIR" "$LOG_FILE"
 } > "$APP/Contents/MacOS/MLX-Audio"
 chmod +x "$APP/Contents/MacOS/MLX-Audio"
 
 # Ad-hoc signature (free, no developer account): keeps macOS from treating the bundle as damaged.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "Note: could not sign the app; it may still work." >&2
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "Note: could not sign the app; it may still work." >&2
 touch "$APP"
 
 echo "Installed 'MLX-Audio' to $TARGET_DIR"
