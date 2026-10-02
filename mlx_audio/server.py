@@ -1448,7 +1448,10 @@ async def stt_realtime_transcriptions(websocket: WebSocket):
         )  # Maximum 10 seconds to avoid memory issues
         silence_skip_count = 0
         speech_chunk_count = 0
-        last_speech_time = time.time()  # Track when we last detected speech
+        # Silence is measured in audio time (samples received), not wall-clock
+        # time: while the model is busy, audio queues up and is then read in a
+        # burst, which made wall-clock silence never accumulate.
+        silence_samples = 0
         silence_threshold_seconds = 0.5  # Process when silence > 0.5 seconds
         initial_chunk_processed = False  # Track if we've processed the initial chunk
 
@@ -1503,7 +1506,7 @@ async def stt_realtime_transcriptions(websocket: WebSocket):
                     audio_buffer.extend(audio_chunk_float)
                     speech_chunk_count += 1
                     silence_skip_count = 0
-                    last_speech_time = current_time
+                    silence_samples = 0
 
                     if len(audio_buffer) % (sample_rate * 2) < len(audio_chunk_float):
                         # Log every ~2 seconds of buffer
@@ -1512,6 +1515,7 @@ async def stt_realtime_transcriptions(websocket: WebSocket):
                         )
                 else:
                     silence_skip_count += 1
+                    silence_samples += len(audio_chunk_int16)
                     # Only log silence periodically to reduce noise
                     if silence_skip_count % 20 == 0:
                         print(f"Silence detected: skipped {silence_skip_count} chunks")
@@ -1520,7 +1524,7 @@ async def stt_realtime_transcriptions(websocket: WebSocket):
                 # 1. Process initial chunk (first 1.5s) for real-time feedback while accumulating
                 # 2. If we have silence > 0.5 seconds and buffer has speech (end of utterance)
                 # 3. If buffer reaches maximum size (to avoid memory issues)
-                time_since_last_speech = current_time - last_speech_time
+                time_since_last_speech = silence_samples / sample_rate
                 should_process_initial = False
                 should_process_final = False
 
@@ -1616,6 +1620,22 @@ async def stt_realtime_transcriptions(websocket: WebSocket):
                 try:
                     data = json.loads(message["text"])
                     if data.get("action") == "stop":
+                        # Transcribe whatever speech is still buffered so the
+                        # last words are not lost when the user presses Stop.
+                        if len(audio_buffer) >= int(sample_rate * 0.3):
+                            try:
+                                await _stream_transcription(
+                                    websocket,
+                                    stt_model,
+                                    np.array(audio_buffer),
+                                    sample_rate,
+                                    language,
+                                    is_partial=False,
+                                    streaming=streaming,
+                                )
+                            except Exception as e:
+                                print(f"Error transcribing remaining audio: {e}")
+                        audio_buffer = []
                         break
                 except Exception:
                     pass
