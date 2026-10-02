@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
+import { RealtimeTranscription } from "@/components/realtime-transcription"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { FileText, Upload, MoreVertical, X, ChevronDown, Mic } from "lucide-react"
 import Link from "next/link"
@@ -23,6 +24,7 @@ export default function SpeechToTextPage() {
     },
   ])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [showRealtime, setShowRealtime] = useState(false)
   const [primaryLanguage, setPrimaryLanguage] = useState("Detect")
   const [tagAudioEvents, setTagAudioEvents] = useState(false)
   const [selectedModel, setSelectedModel] = useState("mlx-community/whisper-large-v3-turbo-asr-fp16")
@@ -255,12 +257,15 @@ export default function SpeechToTextPage() {
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <Link href="/speech-to-text/realtime">
-              <button className="flex items-center space-x-2 bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg transition-colors">
-                <Mic className="h-5 w-5" />
-                <span>Realtime Transcription</span>
-              </button>
-            </Link>
+            <button
+              onClick={() => setShowRealtime((v) => !v)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors text-white ${
+                showRealtime ? "bg-sky-700 hover:bg-sky-800" : "bg-sky-500 hover:bg-sky-600"
+              }`}
+            >
+              <Mic className="h-5 w-5" />
+              <span>{showRealtime ? "Hide Realtime" : "Realtime Transcription"}</span>
+            </button>
             <button
               onClick={() => setIsModalOpen(true)}
               className="flex items-center space-x-2 bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
@@ -270,6 +275,12 @@ export default function SpeechToTextPage() {
             </button>
           </div>
         </div>
+
+        {showRealtime && (
+          <div className="mb-6">
+            <RealtimeTranscription />
+          </div>
+        )}
 
         <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
           {files.length > 0 ? (
