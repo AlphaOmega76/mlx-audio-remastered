@@ -120,3 +120,131 @@ def page_text(reader, page) -> str:
     except Exception:
         pass
     return (page.extract_text() or "").strip()
+
+
+# ---- paragraphs --------------------------------------------------------------------------------
+# PDF text has a hard line break at the end of every visual line (often padded with spaces), no
+# paragraph markers, and page numbers, running headers and junk characters in between. This rebuilds
+# readable paragraphs with a few simple rules. It is a heuristic (a PDF has no real paragraphs), and
+# mirrors browser-extension/pdftext.js, which does the same for the extension's PDF reader page.
+#
+#   * a blank line is a paragraph break
+#   * a line that ends a sentence and is clearly shorter than the page's full lines ends its paragraph
+#   * a short line without end punctuation, followed by a capitalised line, is a heading
+#   * a word split by a hyphen at the end of a line, or cut after 1-3 letters, is joined back together
+#   * page numbers, running headers/footers, junk characters and dot leaders are dropped
+#   * ligatures such as "ﬁ" become plain letters; a phrase repeated within one line is collapsed
+
+import math
+import re
+import unicodedata
+
+_SENTENCE_END = re.compile(r"""[.!?:;…]["'”’)\]]*$""")
+_PAGE_NUMBER = re.compile(r"^(?:page\s+)?\d{1,4}(?:\s*(?:of|/)\s*\d{1,4})?$", re.IGNORECASE)
+_REPEAT = re.compile(r"^(.{10,}?)\s*\1$")
+_EDGE = 2  # lines at the top and bottom of a page that may be a running header or footer
+
+
+def _clean_lines(text: str) -> list[str]:
+    lines = []
+    for raw in unicodedata.normalize("NFKC", text or "").splitlines():
+        line = re.sub(r"�+", " ", raw)
+        line = re.sub(r"[.…]{4,}", " ", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        m = _REPEAT.match(line)
+        lines.append(m.group(1) if m else line)
+    return lines
+
+
+def _shape(line: str) -> str:
+    return re.sub(r"\d+", "#", line)
+
+
+def _running_lines(page_texts: list[str]) -> set[str]:
+    """Lines that, ignoring digits, open or close at least half of the pages (3 or more pages)."""
+    if len(page_texts) < 3:
+        return set()
+    counts: dict[str, int] = {}
+    for text in page_texts:
+        lines = [l for l in _clean_lines(text) if l]
+        for shape in {_shape(l) for l in lines[:_EDGE] + lines[-_EDGE:]}:
+            counts[shape] = counts.get(shape, 0) + 1
+    need = max(2, math.ceil(len(page_texts) / 2))
+    return {s for s, n in counts.items() if n >= need and any(c.isalpha() for c in s)}
+
+
+def _join(prev: str, nxt: str, last_len: int) -> str:
+    if re.search(r"[A-Za-z] ?-$", prev) and re.match(r"[a-z]", nxt):
+        return re.sub(r" ?-$", "", prev) + nxt
+    if last_len <= 3 and re.search(r"[A-Za-z]$", prev) and re.match(r"[a-z]", nxt):
+        return prev + nxt
+    return prev + " " + nxt
+
+
+def _percentile(values: list[int], p: float) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(p * len(ordered)))]
+
+
+def paragraphs_of_page(text: str, drop: set[str] | None = None) -> list[str]:
+    """One page's text -> a list of paragraph strings. ``drop`` = running header/footer shapes."""
+    lines = _clean_lines(text)
+    if drop:
+        filled = [i for i, l in enumerate(lines) if l]
+        edge = set(filled[:_EDGE] + filled[-_EDGE:])
+        lines = ["" if (i in edge and _shape(l) in drop) else l for i, l in enumerate(lines)]
+    full = _percentile([len(l) for l in lines if l], 0.9)
+
+    out: list[str] = []
+    cur = ""
+    last_len = 0
+
+    def flush() -> None:
+        nonlocal cur, last_len
+        if cur:
+            out.append(cur)
+        cur = ""
+        last_len = 0
+
+    for line in lines:
+        if not line:
+            flush()
+            continue
+        if _PAGE_NUMBER.match(line):
+            continue
+        if cur:
+            short_line = last_len < 0.75 * full
+            ends_sentence = bool(_SENTENCE_END.search(cur))
+            heading = last_len < 0.5 * full and last_len < 70 and not ends_sentence and re.match(r"[A-Z0-9]", line)
+            if (ends_sentence and short_line) or heading:
+                flush()
+        cur = _join(cur, line, last_len) if cur else line
+        last_len = len(line)
+    flush()
+    return out
+
+
+def build_pages(page_texts: list[str]) -> list[tuple[int, list[str]]]:
+    """All pages -> ``[(page number from 1, [paragraphs])]``, skipping pages with no text."""
+    drop = _running_lines(page_texts)
+    pages = []
+    for i, text in enumerate(page_texts):
+        paragraphs = paragraphs_of_page(text, drop)
+        if paragraphs:
+            pages.append((i + 1, paragraphs))
+    return pages
+
+
+def format_text(pages: list[tuple[int, list[str]]]) -> str:
+    """Paragraphs separated by blank lines. A paragraph that runs on across a page break (it does not
+    end a sentence and the next page begins in lower case) is joined into one."""
+    paragraphs: list[str] = []
+    for _, page in pages:
+        for k, paragraph in enumerate(page):
+            if k == 0 and paragraphs and not _SENTENCE_END.search(paragraphs[-1]) and re.match(r"[a-z]", paragraph):
+                paragraphs[-1] = _join(paragraphs[-1], paragraph, len(paragraphs[-1]))
+            else:
+                paragraphs.append(paragraph)
+    return "\n\n".join(paragraphs)

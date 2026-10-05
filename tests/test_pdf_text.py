@@ -98,3 +98,83 @@ def test_a_broken_page_still_gives_its_text():
             return " plain text "
 
     assert page_text(None, Boom()) == "plain text"
+
+
+# ---- paragraphs (mirrors tests/test_pdf_reader_text.py, which tests the extension's JavaScript version) ----
+
+from mlx_audio.pdf_text import build_pages, format_text, paragraphs_of_page
+
+
+def test_blank_line_and_short_last_line_end_a_paragraph():
+    text = (
+        "This is the first paragraph and its lines run right out to the margin of the\n"
+        "page like ordinary justified body text does in a book or a report that is long\n"
+        "and ends here.\n"
+        "The second paragraph starts on a fresh line and keeps going out to the margin of\n"
+        "the page just the same as the first one did before it stopped.\n"
+        "\n"
+        "A third one, after a blank line."
+    )
+    got = paragraphs_of_page(text)
+    assert len(got) == 3, got
+    assert got[0].endswith("and ends here.") and got[1].startswith("The second")
+
+
+def test_lines_are_joined_and_hyphenated_words_repaired():
+    assert paragraphs_of_page("The harbour was quiet and the fisher-\nmen had gone home for the night to\nrest.") == [
+        "The harbour was quiet and the fishermen had gone home for the night to rest."
+    ]
+    # a space before the hyphen, and trailing spaces that PDF extraction leaves at the end of lines
+    got = paragraphs_of_page("The humans of Eredane were once a proud and uni -  \nfied people who shared a fam -  \nily.")
+    assert got == ["The humans of Eredane were once a proud and unified people who shared a family."], got
+
+
+def test_headings_are_their_own_paragraph():
+    got = paragraphs_of_page(
+        "Chapter Two\nThe morning came in grey over the harbour, and the boats were already out beyond the\n"
+        "point where the water turns dark."
+    )
+    assert got[0] == "Chapter Two" and got[1].startswith("The morning"), got
+
+
+def test_page_numbers_ligatures_junk_leaders_and_repeated_phrases():
+    assert paragraphs_of_page("Page 3 of 40\nThe ﬁnal conﬁguration is ready.\n12") == ["The final configuration is ready."]
+    flat = " | ".join(
+        paragraphs_of_page("Rules of the Harbour  Rules of the Harbour\nChapter 1 ����� 38\nDw\narves ........ 44\nBora Bora")
+    )
+    assert flat.count("Rules of the Harbour") == 1 and "�" not in flat and "..." not in flat
+    assert "Dwarves" in flat and "Bora Bora" in flat
+
+
+def test_running_header_and_footer_dropped_and_empty_pages_skipped():
+    def page(n, body):
+        return f"Quarterly Report\n{body}\nPrinted 5/10/26 page {n}/4"
+
+    got = build_pages([page(1, "Alpha text here."), page(2, "Beta text here."), "", page(4, "Delta text here.")])
+    assert [n for n, _ in got] == [1, 2, 4]
+    flat = " ".join(" ".join(p) for _, p in got)
+    assert "Quarterly" not in flat and "Printed" not in flat and "Alpha text here." in flat
+
+
+def test_formatted_text_has_blank_lines_between_paragraphs_and_joins_across_pages():
+    pages = [
+        (1, ["First paragraph ends here.", "Second paragraph runs on and on until the page"]),
+        (2, ["ends and carries on onto the next page.", "Third paragraph."]),
+    ]
+    assert format_text(pages) == (
+        "First paragraph ends here.\n\n"
+        "Second paragraph runs on and on until the page ends and carries on onto the next page.\n\n"
+        "Third paragraph."
+    )
+
+
+def test_extracted_pdf_text_comes_out_as_paragraphs():
+    # a PDF whose lines are padded and broken the way real ones are
+    lines = ["(Alpha line one of the first paragraph runs to the margin of the page and on) '",
+             "(and a short end.) '",
+             "(Beta line one of the second paragraph also runs right out to the page margin and) '",
+             "(ends too.) '"]
+    content = "BT /F1 12 Tf 14 TL 20 250 Td\n" + "\n".join(lines) + "\nET"
+    reader = PdfReader(io.BytesIO(_pdf(content)))
+    text = format_text(build_pages([page_text(reader, reader.pages[0])]))
+    assert text.count("\n\n") == 1 and "\n" not in text.replace("\n\n", ""), repr(text)

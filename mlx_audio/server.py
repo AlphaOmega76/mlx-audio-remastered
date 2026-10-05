@@ -1137,7 +1137,7 @@ async def extract_document_text(file: UploadFile = File(...)):
         from pypdf import PdfReader
         from pypdf.errors import PyPdfError
 
-        from mlx_audio.pdf_text import page_text
+        from mlx_audio.pdf_text import build_pages, format_text, page_text
     except ImportError:
         raise HTTPException(
             status_code=501,
@@ -1158,7 +1158,8 @@ async def extract_document_text(file: UploadFile = File(...)):
                 )
         # page_text also removes text a PDF draws several times at the same spot
         pages = [page_text(reader, page) for page in reader.pages]
-        return "\n\n".join(p for p in pages if p), pages
+        # "text" is laid out in paragraphs (blank line between them) instead of one line per printed line
+        return format_text(build_pages(pages)), pages
 
     try:
         text, page_texts = await asyncio.to_thread(_extract)
