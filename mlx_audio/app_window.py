@@ -212,6 +212,33 @@ def _enable_media_devices() -> None:
         print(f"Could not enable the microphone: {exc}", file=sys.stderr)
 
 
+def _clear_web_cache() -> None:
+    """Forget the pages the window cached (not its settings), so it shows the current UI.
+
+    The window keeps a cache between launches. Without this, after the UI was updated the window
+    could keep showing the old page for hours (found when a new button did not appear): the page was
+    served without caching rules, so the cached copy was thought to be fresh. The server now says
+    "always check" for pages, but a copy cached before that still has to be thrown away once.
+    """
+    try:
+        from Foundation import NSDate
+        from PyObjCTools import AppHelper
+        from webview.platforms import cocoa
+
+        def clear():
+            for view in list(cocoa.BrowserView.instances.values()):
+                store = view.webview.configuration().websiteDataStore()
+                store.removeDataOfTypes_modifiedSince_completionHandler_(
+                    {"WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache"},
+                    NSDate.dateWithTimeIntervalSince1970_(0),
+                    lambda: None,
+                )
+
+        AppHelper.callAfter(clear)
+    except Exception as exc:  # the app still works, it may just show an older page once
+        print(f"Could not clear the window's cache: {exc}", file=sys.stderr)
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="mlx_audio.app_window", description=__doc__.split("\n\n")[0])
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -264,7 +291,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     def boot():
         _enable_media_devices()
-        time.sleep(0.5)  # let the preference land before the page loads
+        _clear_web_cache()
+        time.sleep(0.5)  # let the preference land and the cache clear before the page loads
         state = "up" if proc is None else wait_for_server(args.port, proc)
         if state == "up":
             window.load_url(url)
