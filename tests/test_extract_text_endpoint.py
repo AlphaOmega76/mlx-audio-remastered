@@ -67,6 +67,7 @@ def test_extracts_text(client):
     body = r.json()
     assert "Hello MLX Audio" in body["text"]
     assert body["pages"] == 1
+    assert len(body["page_texts"]) == 1 and "Hello MLX Audio" in body["page_texts"][0]
     assert body["filename"] == "doc.pdf"
 
 

@@ -1146,7 +1146,7 @@ async def extract_document_text(file: UploadFile = File(...)):
     if not data.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="Uploaded file is not a PDF.")
 
-    def _extract() -> tuple[str, int]:
+    def _extract() -> tuple[str, list[str]]:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             # Many PDFs are "encrypted" with an empty user password.
@@ -1155,10 +1155,10 @@ async def extract_document_text(file: UploadFile = File(...)):
                     status_code=400, detail="PDF is password protected."
                 )
         pages = [(page.extract_text() or "").strip() for page in reader.pages]
-        return "\n\n".join(p for p in pages if p), len(pages)
+        return "\n\n".join(p for p in pages if p), pages
 
     try:
-        text, page_count = await asyncio.to_thread(_extract)
+        text, page_texts = await asyncio.to_thread(_extract)
     except HTTPException:
         raise
     except (PyPdfError, ValueError, KeyError, OSError) as e:
@@ -1169,7 +1169,14 @@ async def extract_document_text(file: UploadFile = File(...)):
             status_code=422,
             detail="No text found in this PDF. It may be a scanned document (OCR is not supported).",
         )
-    return {"text": text, "pages": page_count, "filename": file.filename}
+    # "page_texts" has one entry per page (empty for pages without a text layer) so that
+    # clients such as the browser extension's PDF reader can show page numbers.
+    return {
+        "text": text,
+        "pages": len(page_texts),
+        "page_texts": page_texts,
+        "filename": file.filename,
+    }
 
 
 @app.post("/v1/audio/transcriptions")
