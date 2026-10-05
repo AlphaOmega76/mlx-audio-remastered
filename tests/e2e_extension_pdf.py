@@ -8,12 +8,15 @@ records the text it was asked to say), while PDF text extraction goes to the rea
 profile; your own Chrome is not touched. Checks that:
 
   * pressing Read on a PDF tab opens the reader page (and does not start speaking),
-  * the reader shows the PDF's pages and paragraphs, rebuilt from the PDF's line-broken text,
+  * the reader shows the PDF's pages and paragraphs, rebuilt from the PDF's line-broken text (the
+    test PDF draws every page twice, like some real PDFs, and the text must come out once),
   * clicking a sentence starts reading from that sentence (the first text sent for speech begins
     there, and the highlight lands on it),
   * "Read from the start" begins at the top,
   * the toolbar popup labels its button correctly on a PDF tab and on the reader tab,
-  * a PDF with no text gives a clear message and opens no reader.
+  * a PDF saved on disk (file://) works too: the download happens on the reader page, because
+    Chrome does not let the background worker read local files,
+  * a PDF with no text gives a clear message on the reader page.
 """
 
 import http.server
@@ -40,6 +43,7 @@ STUB_PORT = int(os.environ.get("E2E_PDF_PORT", "8817"))
 REAL_PORT = STUB_PORT - 1  # the real server, used only for text extraction
 
 SPEECH_REQUESTS = []
+SPEECH_BODIES = []  # the whole request of each speech call (speed, narration_id, ...)
 
 
 def silent_wav(seconds=1.0, rate=24000):
@@ -62,10 +66,13 @@ def make_pdf(pages):
     for lines in pages:
         content_id, page_id = next_id, next_id + 1
         next_id += 2
-        ops = ["BT /F1 11 Tf 14 TL 50 740 Td"]
-        for line in lines:
-            ops.append("(%s) '" % line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)"))
-        ops.append("ET")
+        # every page is drawn twice (an outline copy, then a filled one), as some real PDFs do
+        ops = []
+        for render_mode in (1, 0):
+            ops.append("BT /F1 11 Tf %d Tr 14 TL 50 740 Td" % render_mode)
+            for line in lines:
+                ops.append("(%s) '" % line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)"))
+            ops.append("ET")
         stream = "\n".join(ops).encode()
         objs[content_id] = b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"
         objs[page_id] = (
@@ -160,7 +167,10 @@ class Stub(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         if self.path == "/v1/audio/speech":
-            SPEECH_REQUESTS.append(json.loads(body)["input"])
+            request = json.loads(body)
+            SPEECH_REQUESTS.append(request["input"])
+            SPEECH_BODIES.append(request)
+            time.sleep(0.4)  # a little "generation time", so there is a moment to change the speed
             return self._send(200, silent_wav(), "audio/wav")
         if self.path == "/v1/documents/extract-text":  # forwarded to the real server
             req = urllib.request.Request(
@@ -221,6 +231,11 @@ def main():
             time.sleep(1)
             cdp.js(page, f"chrome.storage.local.set({{serverUrl: 'http://localhost:{STUB_PORT}'}})")
 
+            def target_of(pattern):
+                for t in cdp.call("Target.getTargets")["result"]["targetInfos"]:
+                    if "reader.html" in t["url"] and pattern in t["url"]:
+                        return cdp.call("Target.attachToTarget", {"targetId": t["targetId"], "flatten": True})["result"]["sessionId"]
+
             def tabs(pattern):
                 return cdp.js(page, f"chrome.tabs.query({{}}).then(t => t.filter(x => (x.url||'').includes({json.dumps(pattern)})).map(x => x.id))") or []
 
@@ -238,10 +253,8 @@ def main():
             check("nothing was spoken yet", SPEECH_REQUESTS == [], str(SPEECH_REQUESTS)[:100])
 
             reader_tab = tabs("reader.html")[0]
-            targets = cdp.call("Target.getTargets")["result"]["targetInfos"]
-            tid = next(t["targetId"] for t in targets if "reader.html" in t["url"])
-            rd = cdp.call("Target.attachToTarget", {"targetId": tid, "flatten": True})["result"]["sessionId"]
-            time.sleep(2)
+            rd = target_of("book.pdf")
+            wait_for(lambda: cdp.js(rd, "document.querySelectorAll('.page').length") == 3, 40)
 
             info = cdp.js(rd, """JSON.stringify({
                 pages: document.querySelectorAll('.page').length,
@@ -303,21 +316,55 @@ def main():
                 # ---- start from the top ----
                 cdp.js(page, 'chrome.runtime.sendMessage({target:"background", type:"stop"})')
                 SPEECH_REQUESTS.clear()
+                SPEECH_BODIES.clear()
                 cdp.js(rd, "document.getElementById('top').click()")
                 wait_for(lambda: len(SPEECH_REQUESTS) >= 1, 30)
                 first = SPEECH_REQUESTS[0] if SPEECH_REQUESTS else ""
                 check("'Read from the start' begins at the top", first.startswith("Chapter One"), first[:80])
+
+                # ---- the speed slider ----
+                check("the slider starts at the saved speed (1.0x)", cdp.js(rd, "document.getElementById('speedValue').textContent") == "1.0x")
+                old_speed, old_narration = SPEECH_BODIES[0]["speed"], SPEECH_BODIES[0].get("narration_id")
+                n_before = len(SPEECH_BODIES)
+                cdp.js(rd, """(() => { const s = document.getElementById('speed'); s.value = '1.5';
+                    s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')) })()""")
+                check("the slider shows the new speed", cdp.js(rd, "document.getElementById('speedValue').textContent") == "1.5x")
+                wait_for(lambda: any(b["speed"] == 1.5 for b in SPEECH_BODIES[n_before:]), 30)
+                later = [b for b in SPEECH_BODIES[n_before:] if b["speed"] == 1.5]
+                check("parts made after the change are requested at the new speed", bool(later) and old_speed == 1, f"{old_speed} -> {[b['speed'] for b in SPEECH_BODIES[n_before:]]}")
+                check("and as a new narration (so the server does not pull the pace back)",
+                      bool(later) and later[0].get("narration_id") not in (None, old_narration), str(later[:1])[:120])
+                saved = cdp.js(page, "chrome.storage.local.get('speed').then(x => x.speed)")
+                check("the speed is remembered for the settings page and the next reading", saved == 1.5, str(saved))
+                cdp.js(page, "chrome.storage.local.remove('speed')")
                 cdp.js(page, 'chrome.runtime.sendMessage({target:"background", type:"stop"})')
+
+            # ---- a PDF saved on disk (file://) ----
+            local = Path(tmp) / "local book.pdf"
+            local.write_bytes(Stub.pdfs["/book.pdf"])
+            cdp.call("Target.createTarget", {"url": local.as_uri()})
+            check("the local PDF tab opened", wait_for(lambda: tabs("local%20book.pdf"), 15))
+            time.sleep(3)
+            local_tab = tabs("local%20book.pdf")[0]
+            state = cdp.js(page, f'chrome.runtime.sendMessage({{target:"background", type:"start", tabId:{local_tab}}})', timeout=120)
+            check("pressing Read on a local PDF does not fail", state and state.get("status") in ("idle", None), str(state)[:200])
+            check("its reader page opened", wait_for(lambda: target_of("local") is not None, 20))
+            rl = target_of("local")
+            ok = wait_for(lambda: cdp.js(rl, "document.querySelectorAll('.page').length") == 3, 40)
+            check("the local PDF's text is shown (downloaded by the reader page)", ok,
+                  str(cdp.js(rl, "document.getElementById('error').textContent")))
 
             # ---- a PDF with no text ----
             cdp.call("Target.createTarget", {"url": f"http://localhost:{STUB_PORT}/blank.pdf"})
             wait_for(lambda: tabs("/blank.pdf"), 15)
             time.sleep(3)
             blank_tab = tabs("/blank.pdf")[0]
-            before = len(tabs("reader.html"))
-            state = cdp.js(page, f'chrome.runtime.sendMessage({{target:"background", type:"start", tabId:{blank_tab}}})', timeout=120)
-            check("a PDF with no text gives a clear message", state and state.get("status") == "error" and "No text" in (state.get("error") or ""), str(state)[:200])
-            check("and opens no reader", len(tabs("reader.html")) == before)
+            cdp.js(page, f'chrome.runtime.sendMessage({{target:"background", type:"start", tabId:{blank_tab}}})', timeout=120)
+            wait_for(lambda: target_of("blank.pdf") is not None, 20)
+            rb = target_of("blank.pdf")
+            wait_for(lambda: "No text" in (cdp.js(rb, "document.getElementById('error').textContent") or ""), 30)
+            msg = cdp.js(rb, "document.getElementById('error').textContent")
+            check("a PDF with no text gives a clear message on the reader page", "No text found" in (msg or ""), str(msg)[:120])
     finally:
         if cdp:
             cdp.quit()

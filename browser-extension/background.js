@@ -265,12 +265,12 @@ async function fail(message) {
 
 // ---- PDFs ----
 // Chrome's PDF viewer does not let extensions inject scripts or highlight text, so a PDF is
-// downloaded here, its text is extracted by the server, and the text is shown on the extension's
-// own reader page (reader.html), where it can be read and highlighted like any web page.
+// shown as text on the extension's own reader page (reader.html), where it can be read and
+// highlighted like any web page. The reader page downloads the PDF and has the server extract
+// its text: it has to be an extension *page* that downloads it, because Chrome does not let the
+// background worker fetch local (file://) files, and only a page can with "file:///*" access.
 
 const READER_PATH = "reader.html"
-const PDF_KEY = (id) => `pdf:${id}`
-const KEEP_PDFS = 2 // extracted PDFs kept in session storage (the reader page loads its text from there)
 
 const isReaderUrl = (url) => !!url && url.startsWith(chrome.runtime.getURL(READER_PATH))
 
@@ -288,71 +288,9 @@ async function isPdfTab(tab) {
   }
 }
 
-async function downloadPdf(url) {
-  let res
-  try {
-    res = await fetch(url, { credentials: "include" })
-  } catch {
-    if (url.startsWith("file:") && !(await chrome.extension.isAllowedFileSchemeAccess())) {
-      throw new Error(
-        "To read PDF files saved on this Mac, open chrome://extensions, choose MLX-Audio Reader, Details, " +
-          "and turn on \u201cAllow access to file URLs\u201d. Then press Read again."
-      )
-    }
-    throw new Error("Could not download the PDF.")
-  }
-  if (!res.ok) throw new Error(`Could not download the PDF (error ${res.status}).`)
-  const bytes = await res.arrayBuffer()
-  if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("This does not look like a PDF file.")
-  return bytes
-}
-
-async function openPdfReader(tab, settings) {
-  const mine = session
-  const setNote = async (note) => {
-    if (session !== mine) return
-    session.note = note
-    await saveSession()
-    await broadcast()
-  }
-  await setNote("Reading the PDF\u2026")
-  const server = await ensureServer(settings, setNote)
-  if (session !== mine) return
-  if (!server.ok) return fail(server.error)
-
-  let data
-  try {
-    const bytes = await downloadPdf(tab.url)
-    const name = decodeURIComponent(new URL(tab.url).pathname.split("/").pop() || "document.pdf") || "document.pdf"
-    const form = new FormData()
-    form.append("file", new Blob([bytes], { type: "application/pdf" }), name)
-    await setNote("Extracting the text\u2026")
-    const res = await fetch(`${settings.serverUrl}/v1/documents/extract-text`, { method: "POST", body: form })
-    if (!res.ok) {
-      let detail = ""
-      try { detail = (await res.json()).detail } catch {}
-      throw new Error(detail || `The server could not read this PDF (error ${res.status}).`)
-    }
-    data = await res.json()
-    data.title = (tab.title || name).replace(/\.pdf$/i, "") || "PDF"
-  } catch (e) {
-    return fail(e.message || "Could not read this PDF.")
-  }
-  if (session !== mine) return
-
-  const id = crypto.randomUUID()
-  try {
-    // Keep only the most recent PDFs: each can be a megabyte or more of text.
-    const all = await chrome.storage.session.get(null)
-    const old = Object.keys(all).filter((k) => k.startsWith("pdf:"))
-    if (old.length >= KEEP_PDFS) await chrome.storage.session.remove(old.slice(0, old.length - KEEP_PDFS + 1))
-    await chrome.storage.session.set({
-      [PDF_KEY(id)]: { title: data.title, source: tab.url, pages: data.page_texts || [data.text] },
-    })
-  } catch {
-    return fail("This PDF is too large to open in the reader.")
-  }
-  await chrome.tabs.create({ url: chrome.runtime.getURL(`${READER_PATH}?id=${id}`), index: tab.index + 1, openerTabId: tab.id })
+async function openPdfReader(tab) {
+  const q = new URLSearchParams({ src: tab.url, title: tab.title || "" })
+  await chrome.tabs.create({ url: chrome.runtime.getURL(`${READER_PATH}?${q}`), index: tab.index + 1, openerTabId: tab.id })
   // Nothing is being read yet: the reader page starts the narration when you click a sentence.
   session = null
   await chrome.storage.session.remove(SESSION_KEY)
@@ -373,7 +311,7 @@ async function start(tabId) {
     tab = await chrome.tabs.get(tabId)
   } catch {}
   const onReader = !!tab && isReaderUrl(tab.url)
-  if (tab && !onReader && (await isPdfTab(tab))) return openPdfReader(tab, await getSettings())
+  if (tab && !onReader && (await isPdfTab(tab))) return openPdfReader(tab)
 
   let result
   try {
@@ -532,6 +470,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case "togglePause": await togglePause(); break
       case "stop": await stop(); break
       case "skip": await skip(msg.dir); break
+      case "setSpeed": {
+        // remembered (the settings page shows the same value) and applied to the parts still to come
+        const value = Math.min(2, Math.max(0.5, Number(msg.value) || 1))
+        await chrome.storage.local.set({ speed: value })
+        toPlayer({ type: "speed", value })
+        break
+      }
       case "progress": await onProgress(msg); break
       case "done":
         await loadSession()

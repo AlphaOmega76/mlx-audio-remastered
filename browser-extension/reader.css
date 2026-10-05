@@ -34,11 +34,14 @@ body {
   padding: 10px 20px;
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-#bar .row { display: flex; align-items: center; gap: 12px; max-width: 760px; margin: 0 auto; }
+#bar .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 760px; margin: 0 auto; }
 #bar .row + .row { margin-top: 8px; }
 .title { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status { color: var(--muted); flex: 1; min-width: 0; }
 .controls { display: flex; gap: 6px; }
+.speed { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.speed input { width: 110px; accent-color: var(--accent); }
+.speed span { min-width: 3ch; text-align: right; color: var(--fg); }
 button, select {
   font: inherit;
   color: inherit;

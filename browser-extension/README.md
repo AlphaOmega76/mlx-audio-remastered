@@ -32,18 +32,30 @@ Chrome's built-in PDF viewer does not let extensions inject scripts or highlight
 work through the extension's own **PDF reader** page:
 
 1. Open a PDF in Chrome and click the toolbar icon (the button says **Open PDF reader**), or use
-   the right-click menu. The extension downloads the PDF, the MLX-Audio server extracts its text
-   (`/v1/documents/extract-text`, text layer only: scanned PDFs have no text and say so) and a new
-   tab opens with the text, split into pages and paragraphs.
+   the right-click menu. A new tab opens, downloads the PDF, has the MLX-Audio server extract its
+   text (`/v1/documents/extract-text`, text layer only: scanned PDFs have no text and say so) and
+   shows it split into pages and paragraphs.
 2. **Click any sentence** to start reading from there. **Read from the start** begins at the top,
-   and **Jump to page** scrolls to a page. The sentence being spoken is highlighted, and the
+   and **Jump to page** scrolls to a page. The **Speed** slider (0.5x to 2x, the same setting as on
+   the options page) applies from the next part on: parts already prepared are made again at the
+   new speed, and the part playing finishes as it is. The sentence being spoken is highlighted, and the
    popup's controls (and the same controls on the reader page) work as on any web page.
 3. PDFs saved on your Mac (`file://`) need Chrome's switch once: `chrome://extensions` →
-   MLX-Audio Reader → Details → **Allow access to file URLs**. The extension says so if it is off.
+   MLX-Audio Reader → Details → **Allow access to file URLs** (the manifest declares `file:///*`,
+   which is what makes the switch appear). The reader page says so if it is off. If a download
+   fails for any reason, **Choose the PDF file…** (or dropping the file on the page) always works.
+   The download happens on the reader *page* because Chrome does not let the background worker
+   read local files.
+
+Some PDFs draw every line of text two or three times at the same spot (an outline copy under a
+filled copy), which made the speech repeat every sentence. The server (`mlx_audio/pdf_text.py`)
+removes those repeats before extracting. Found on a 373-page rulebook: 2,471 repeated text blocks
+on 51 pages; the whole book extracts in about 13 s.
 
 PDF text has hard line breaks and no real paragraphs, so `pdftext.js` rebuilds them from line
 lengths (a short line ending a sentence ends a paragraph), joins words hyphenated across lines,
-turns ligatures into letters, and drops page numbers and running headers/footers. It is a
+turns ligatures into letters, and drops page numbers, running headers/footers, junk characters
+and dot leaders. It is a
 heuristic: two-column layouts may read in an odd order, and a paragraph that ends on a nearly
 full line is merged with the next one. The reader shows extracted text, not the PDF's layout.
 
@@ -78,7 +90,8 @@ Chrome's *native messaging* (`mlx_audio/native_host.py`, registered per browser 
 
 ## How it works
 
-- `reader.html` / `reader.js` / `pdftext.js`: the PDF reader page (above). It loads `content.js`
+- `reader.html` / `reader.js` / `pdftext.js`: the PDF reader page (above). It downloads the PDF,
+  asks the server for its text and loads `content.js`
   itself, which finds the sentences in its `<main>` and highlights them; clicking a sentence tells
   `content.js` where (`window.__mlxaFrom`) so the coordinator starts from that sentence.
 - `content.js` (with Mozilla's [Readability](https://github.com/mozilla/readability) in `vendor/`)

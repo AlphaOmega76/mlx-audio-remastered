@@ -5,11 +5,14 @@
 // by reader.html) finds the sentences in <main> and highlights them, and the toolbar popup's
 // controls keep working.
 import { buildPages } from "./pdftext.js"
+import { getSettings } from "./settings.js"
 
 const $ = (id) => document.getElementById(id)
 const send = (msg) => chrome.runtime.sendMessage({ target: "background", ...msg })
 
 let myTabId = null
+let note = "" // what the page is doing before reading starts (downloading the PDF, ...)
+let loadError = "" // why the PDF could not be shown
 let state = { status: "idle" }
 const ACTIVE = ["loading", "playing", "paused", "buffering"]
 
@@ -22,7 +25,7 @@ function render() {
     $("toggle").innerHTML = paused ? "&#9654;" : "&#10074;&#10074;"
     $("toggle").title = $("toggle").ariaLabel = paused ? "Resume" : "Pause"
   }
-  let text = "Click any sentence to start reading from there."
+  let text = note || "Click any sentence to start reading from there."
   if (mine) {
     if (state.status === "loading") text = state.note || "Preparing… the first part takes a few seconds"
     else if (state.status === "buffering") text = "Generating the next part…"
@@ -31,7 +34,7 @@ function render() {
     else if (state.status === "done") text = "Finished reading. Click a sentence to read again."
   }
   $("status").textContent = text
-  const error = mine && state.status === "error" ? state.error : ""
+  const error = loadError || (mine && state.status === "error" ? state.error : "")
   $("error").textContent = error
   $("error").classList.toggle("hidden", !error)
 }
@@ -111,6 +114,10 @@ $("jump").onchange = (e) => {
   if (n) document.getElementById(`page-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
   e.target.value = ""
 }
+$("speed").oninput = () => {
+  $("speedValue").textContent = `${Number($("speed").value).toFixed(1)}x`
+}
+$("speed").onchange = () => send({ type: "setSpeed", value: Number($("speed").value) })
 $("toggle").onclick = async () => (state = await send({ type: "togglePause" }), render())
 $("stop").onclick = async () => (state = await send({ type: "stop" }), render())
 $("prev").onclick = () => send({ type: "skip", dir: -1 })
@@ -123,21 +130,92 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 })
 
+// ---- getting the PDF's text ----
+
+function fail(message, canPick = true) {
+  note = ""
+  loadError = message
+  $("pickrow").classList.toggle("hidden", !canPick)
+  render()
+}
+
+// Sends the PDF to the server, which extracts its text, and shows the result.
+async function openBytes(bytes, name, title) {
+  loadError = ""
+  $("pickrow").classList.add("hidden")
+  if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return fail("This does not look like a PDF file.")
+
+  note = "Starting the MLX-Audio server… the very first time can take a few minutes."
+  render()
+  const server = await send({ type: "ensureServer" })
+  if (!server || !server.ok) return fail((server && server.error) || "Cannot reach the MLX-Audio server.", false)
+
+  note = "Extracting the text…"
+  render()
+  try {
+    const settings = await getSettings()
+    const form = new FormData()
+    form.append("file", new Blob([bytes], { type: "application/pdf" }), name)
+    const res = await fetch(`${settings.serverUrl}/v1/documents/extract-text`, { method: "POST", body: form })
+    if (!res.ok) {
+      let detail = ""
+      try { detail = (await res.json()).detail } catch {}
+      return fail(detail || `The server could not read this PDF (error ${res.status}).`, res.status !== 422)
+    }
+    const data = await res.json()
+    note = ""
+    show({ title: title || name.replace(/\.pdf$/i, "") || "PDF", pages: data.page_texts || [data.text] })
+    render()
+  } catch (e) {
+    fail("Could not reach the MLX-Audio server to read this PDF.", false)
+  }
+}
+
+async function loadFromAddress(src, title) {
+  const name = decodeURIComponent(new URL(src).pathname.split("/").pop() || "document.pdf") || "document.pdf"
+  note = "Downloading the PDF…"
+  render()
+  let bytes
+  try {
+    const res = await fetch(src, { credentials: "include" })
+    if (!res.ok) return fail(`Could not download the PDF (error ${res.status}). You can choose the file instead.`)
+    bytes = await res.arrayBuffer()
+  } catch {
+    const local = src.startsWith("file:")
+    const blocked = local && !(await chrome.extension.isAllowedFileSchemeAccess())
+    return fail(
+      blocked
+        ? "Chrome has not allowed this extension to open files on your Mac. Open chrome://extensions, choose MLX-Audio Reader, Details, and turn on \u201cAllow access to file URLs\u201d, then reload this page. Or choose the file below."
+        : "Could not download the PDF. You can choose the file instead."
+    )
+  }
+  await openBytes(bytes, name, title)
+}
+
+async function loadFromFile(file) {
+  if (!file) return
+  await openBytes(await file.arrayBuffer(), file.name, file.name.replace(/\.pdf$/i, ""))
+}
+
+$("pick").onclick = () => $("file").click()
+$("file").onchange = (e) => loadFromFile(e.target.files[0])
+document.addEventListener("dragover", (e) => e.preventDefault())
+document.addEventListener("drop", (e) => {
+  e.preventDefault()
+  loadFromFile(e.dataTransfer.files[0])
+})
+
 async function init() {
   myTabId = (await chrome.tabs.getCurrent())?.id ?? null
-  const id = new URLSearchParams(location.search).get("id")
-  const key = `pdf:${id}`
-  const doc = id ? (await chrome.storage.session.get(key))[key] : null
-  if (!doc) {
-    $("doc").innerHTML = ""
-    const p = document.createElement("div")
-    p.className = "empty"
-    p.textContent = "This reader page has expired. Go back to the PDF and press Read again."
-    $("doc").append(p)
-    return
-  }
-  show(doc)
+  const params = new URLSearchParams(location.search)
+  const src = params.get("src")
+  $("title").textContent = params.get("title") || "PDF reader"
+  const { speed } = await getSettings()
+  $("speed").value = speed
+  $("speedValue").textContent = `${Number(speed).toFixed(1)}x`
   state = (await send({ type: "getState" })) || state
   render()
+  if (!src) return fail("Open a PDF in Chrome and press Read to see its text here, or choose a PDF file.")
+  await loadFromAddress(src, params.get("title") || "")
 }
 init()
