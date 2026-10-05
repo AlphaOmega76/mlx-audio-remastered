@@ -26,6 +26,30 @@ Works in Chrome and other Chromium-based browsers (Brave, Edge, Arc).
   The default is Kokoro (voice `af_heart`); Qwen3-TTS is also selectable, with its own voices
   and a speaking-style instruction (default "calm, measured narrator tone").
 
+## Reading PDFs
+
+Chrome's built-in PDF viewer does not let extensions inject scripts or highlight text, so PDFs
+work through the extension's own **PDF reader** page:
+
+1. Open a PDF in Chrome and click the toolbar icon (the button says **Open PDF reader**), or use
+   the right-click menu. The extension downloads the PDF, the MLX-Audio server extracts its text
+   (`/v1/documents/extract-text`, text layer only: scanned PDFs have no text and say so) and a new
+   tab opens with the text, split into pages and paragraphs.
+2. **Click any sentence** to start reading from there. **Read from the start** begins at the top,
+   and **Jump to page** scrolls to a page. The sentence being spoken is highlighted, and the
+   popup's controls (and the same controls on the reader page) work as on any web page.
+3. PDFs saved on your Mac (`file://`) need Chrome's switch once: `chrome://extensions` →
+   MLX-Audio Reader → Details → **Allow access to file URLs**. The extension says so if it is off.
+
+PDF text has hard line breaks and no real paragraphs, so `pdftext.js` rebuilds them from line
+lengths (a short line ending a sentence ends a paragraph), joins words hyphenated across lines,
+turns ligatures into letters, and drops page numbers and running headers/footers. It is a
+heuristic: two-column layouts may read in an odd order, and a paragraph that ends on a nearly
+full line is merged with the next one. The reader shows extracted text, not the PDF's layout.
+
+Tests: `tests/test_pdf_reader_text.py` (needs Node) and `python3 tests/e2e_extension_pdf.py`
+(real headless Chrome; speech is replaced by silence, so nothing is spoken).
+
 ## Starting the server
 
 A Chrome extension cannot start programs, so the extension talks to a small helper through
@@ -54,6 +78,9 @@ Chrome's *native messaging* (`mlx_audio/native_host.py`, registered per browser 
 
 ## How it works
 
+- `reader.html` / `reader.js` / `pdftext.js`: the PDF reader page (above). It loads `content.js`
+  itself, which finds the sentences in its `<main>` and highlights them; clicking a sentence tells
+  `content.js` where (`window.__mlxaFrom`) so the coordinator starts from that sentence.
 - `content.js` (with Mozilla's [Readability](https://github.com/mozilla/readability) in `vendor/`)
   finds the selection or main article, drops menus, ads and footers, and splits the text into
   sentences. It highlights the current sentence with the CSS Custom Highlight API, so the page

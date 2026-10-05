@@ -1,0 +1,71 @@
+:root {
+  --bg: #fafaf9;
+  --fg: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
+  --accent: #0ea5e9;
+  --bar: rgba(250, 250, 249, 0.94);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1917;
+    --fg: #e7e5e4;
+    --muted: #a8a29e;
+    --line: #44403c;
+    --bar: rgba(28, 25, 23, 0.94);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.65 Georgia, "Times New Roman", serif;
+}
+.hidden { display: none !important; }
+
+#bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bar);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 20px;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+#bar .row { display: flex; align-items: center; gap: 12px; max-width: 760px; margin: 0 auto; }
+#bar .row + .row { margin-top: 8px; }
+.title { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status { color: var(--muted); flex: 1; min-width: 0; }
+.controls { display: flex; gap: 6px; }
+button, select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.5; cursor: default; }
+.error { max-width: 760px; margin: 8px auto 0; color: #dc2626; }
+
+main { max-width: 760px; margin: 0 auto; padding: 8px 20px 120px; }
+.page { position: relative; padding-top: 18px; }
+.page::before {
+  content: attr(data-label);
+  display: block;
+  margin: 10px 0 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+main p { margin: 0 0 1em; cursor: pointer; }
+main p:hover { background: rgba(14, 165, 233, 0.07); }
+.empty { color: var(--muted); padding: 40px 0; font: 15px/1.5 -apple-system, sans-serif; }

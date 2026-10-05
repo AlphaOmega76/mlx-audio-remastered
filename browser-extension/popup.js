@@ -11,7 +11,7 @@ let readable = true
 const ACTIVE = ["loading", "playing", "paused", "buffering"]
 
 function statusText(s) {
-  const what = s.mode === "selection" ? "selection" : "article"
+  const what = s.mode === "selection" ? "selection" : s.mode === "pdf" ? "PDF" : "article"
   switch (s.status) {
     case "loading": return s.note || "Preparing… the first part takes a few seconds"
     case "buffering": return "Generating the next part…"
@@ -46,18 +46,39 @@ function render() {
   $("read").disabled = !serverOk || !readable
 }
 
+function labelAsPdf() {
+  $("read").textContent = "Open PDF reader"
+  $("hint").textContent =
+    "Opens the PDF's text in a reader tab. Click any sentence there to start reading from that spot."
+}
+
 async function labelReadButton() {
   if (!activeTab) return
+  // On the extension's own PDF reader tab: reading from the top; sentences are chosen on the page.
+  if ((activeTab.url || "").startsWith(chrome.runtime.getURL("reader.html"))) {
+    $("read").textContent = "Read from the start"
+    $("hint").textContent = "Or click any sentence on the page to start reading from there."
+    return render()
+  }
   try {
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
-      func: () => window.getSelection().toString().trim().length,
+      func: () => [document.contentType, window.getSelection().toString().trim().length],
     })
-    $("read").textContent = result > 0 ? "Read selection" : "Read this page"
+    if (result[0] === "application/pdf") labelAsPdf()
+    else $("read").textContent = result[1] > 0 ? "Read selection" : "Read this page"
   } catch {
-    readable = false
-    $("read").textContent = "Read this page"
-    $("hint").textContent = "Chrome doesn't allow extensions to read this kind of page."
+    // Chrome refuses the probe on PDFs saved on this Mac unless file access is allowed: go by the address.
+    let isPdf = false
+    try {
+      isPdf = /\.pdf$/i.test(new URL(activeTab.url).pathname)
+    } catch {}
+    if (isPdf) labelAsPdf()
+    else {
+      readable = false
+      $("read").textContent = "Read this page"
+      $("hint").textContent = "Chrome doesn't allow extensions to read this kind of page."
+    }
   }
   render()
 }

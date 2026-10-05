@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF reader · MLX-Audio Reader</title>
+    <link rel="stylesheet" href="reader.css" />
+  </head>
+  <body>
+    <div id="bar">
+      <div class="row">
+        <div id="title" class="title">PDF reader</div>
+        <select id="jump" title="Jump to a page" aria-label="Jump to a page" class="hidden"></select>
+        <button id="top" title="Read from the first page">Read from the start</button>
+      </div>
+      <div class="row">
+        <div class="controls hidden" id="controls">
+          <button id="prev" title="Previous paragraph" aria-label="Previous paragraph">&#9198;</button>
+          <button id="toggle" class="primary" title="Pause" aria-label="Pause">&#10074;&#10074;</button>
+          <button id="next" title="Next paragraph" aria-label="Next paragraph">&#9197;</button>
+          <button id="stop" title="Stop" aria-label="Stop">&#9632;</button>
+        </div>
+        <div id="status" class="status">Click any sentence to start reading from there.</div>
+      </div>
+      <div id="error" class="error hidden"></div>
+    </div>
+
+    <main id="doc"></main>
+
+    <!-- content.js is the same script the toolbar injects into normal pages: it finds the sentences
+         in <main> and highlights the one being spoken. -->
+    <script src="content.js"></script>
+    <script type="module" src="reader.js"></script>
+  </body>
+</html>

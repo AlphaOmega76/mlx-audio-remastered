@@ -263,6 +263,102 @@ async function fail(message) {
   await broadcast()
 }
 
+// ---- PDFs ----
+// Chrome's PDF viewer does not let extensions inject scripts or highlight text, so a PDF is
+// downloaded here, its text is extracted by the server, and the text is shown on the extension's
+// own reader page (reader.html), where it can be read and highlighted like any web page.
+
+const READER_PATH = "reader.html"
+const PDF_KEY = (id) => `pdf:${id}`
+const KEEP_PDFS = 2 // extracted PDFs kept in session storage (the reader page loads its text from there)
+
+const isReaderUrl = (url) => !!url && url.startsWith(chrome.runtime.getURL(READER_PATH))
+
+async function isPdfTab(tab) {
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.contentType })
+    return result === "application/pdf"
+  } catch {
+    // Chrome refused the probe (for example a local file without file access): go by the address.
+    try {
+      return /\.pdf$/i.test(new URL(tab.url).pathname)
+    } catch {
+      return false
+    }
+  }
+}
+
+async function downloadPdf(url) {
+  let res
+  try {
+    res = await fetch(url, { credentials: "include" })
+  } catch {
+    if (url.startsWith("file:") && !(await chrome.extension.isAllowedFileSchemeAccess())) {
+      throw new Error(
+        "To read PDF files saved on this Mac, open chrome://extensions, choose MLX-Audio Reader, Details, " +
+          "and turn on \u201cAllow access to file URLs\u201d. Then press Read again."
+      )
+    }
+    throw new Error("Could not download the PDF.")
+  }
+  if (!res.ok) throw new Error(`Could not download the PDF (error ${res.status}).`)
+  const bytes = await res.arrayBuffer()
+  if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("This does not look like a PDF file.")
+  return bytes
+}
+
+async function openPdfReader(tab, settings) {
+  const mine = session
+  const setNote = async (note) => {
+    if (session !== mine) return
+    session.note = note
+    await saveSession()
+    await broadcast()
+  }
+  await setNote("Reading the PDF\u2026")
+  const server = await ensureServer(settings, setNote)
+  if (session !== mine) return
+  if (!server.ok) return fail(server.error)
+
+  let data
+  try {
+    const bytes = await downloadPdf(tab.url)
+    const name = decodeURIComponent(new URL(tab.url).pathname.split("/").pop() || "document.pdf") || "document.pdf"
+    const form = new FormData()
+    form.append("file", new Blob([bytes], { type: "application/pdf" }), name)
+    await setNote("Extracting the text\u2026")
+    const res = await fetch(`${settings.serverUrl}/v1/documents/extract-text`, { method: "POST", body: form })
+    if (!res.ok) {
+      let detail = ""
+      try { detail = (await res.json()).detail } catch {}
+      throw new Error(detail || `The server could not read this PDF (error ${res.status}).`)
+    }
+    data = await res.json()
+    data.title = (tab.title || name).replace(/\.pdf$/i, "") || "PDF"
+  } catch (e) {
+    return fail(e.message || "Could not read this PDF.")
+  }
+  if (session !== mine) return
+
+  const id = crypto.randomUUID()
+  try {
+    // Keep only the most recent PDFs: each can be a megabyte or more of text.
+    const all = await chrome.storage.session.get(null)
+    const old = Object.keys(all).filter((k) => k.startsWith("pdf:"))
+    if (old.length >= KEEP_PDFS) await chrome.storage.session.remove(old.slice(0, old.length - KEEP_PDFS + 1))
+    await chrome.storage.session.set({
+      [PDF_KEY(id)]: { title: data.title, source: tab.url, pages: data.page_texts || [data.text] },
+    })
+  } catch {
+    return fail("This PDF is too large to open in the reader.")
+  }
+  await chrome.tabs.create({ url: chrome.runtime.getURL(`${READER_PATH}?id=${id}`), index: tab.index + 1, openerTabId: tab.id })
+  // Nothing is being read yet: the reader page starts the narration when you click a sentence.
+  session = null
+  await chrome.storage.session.remove(SESSION_KEY)
+  await broadcast()
+}
+
 // ---- commands ----
 
 async function start(tabId) {
@@ -272,32 +368,50 @@ async function start(tabId) {
   session = { tabId, status: "loading", cur: 0, chunkCount: 0, generated: 0, time: 0, duration: 0 }
   await broadcast()
 
+  let tab = null
+  try {
+    tab = await chrome.tabs.get(tabId)
+  } catch {}
+  const onReader = !!tab && isReaderUrl(tab.url)
+  if (tab && !onReader && (await isPdfTab(tab))) return openPdfReader(tab, await getSettings())
+
   let result
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["vendor/Readability.js", "content.js"] })
-    ;[{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.__mlxa.extract() })
+    if (onReader) {
+      // content.js is already part of the reader page; it answers for its own text.
+      result = await chrome.tabs.sendMessage(tabId, { type: "mlxa-extract" })
+    } else {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["vendor/Readability.js", "content.js"] })
+      ;[{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.__mlxa.extract() })
+    }
   } catch (e) {
     return fail("This page can't be read (Chrome blocks extensions on it).")
   }
   if (!result || !result.ok) return fail((result && result.error) || "No readable text found on this page.")
 
-  const chunks = buildChunks(result.sentences)
+  // Reading can begin part-way through (the PDF reader: the sentence that was clicked). Sentences
+  // are renumbered from 0 here; idOffset turns a number back into the page's own sentence id.
+  const startId = Math.min(Math.max(0, result.startId || 0), result.sentences.length - 1)
+  const sentences = result.sentences.slice(startId).map((s, i) => ({ ...s, id: i }))
+
+  const chunks = buildChunks(sentences)
   const sentenceInfo = []
   chunks.forEach((c, ci) => c.sentences.forEach((x) => (sentenceInfo[x.id] = { chunk: ci, start: x.start, end: x.end, block: x.block })))
 
   const settings = await getSettings()
   session = {
-    tabId, title: result.title, url: result.url, mode: result.mode,
+    tabId, title: result.title, url: result.url, mode: onReader ? "pdf" : result.mode, idOffset: startId,
     status: "loading", error: null,
     texts: chunks.map((c) => c.text),
     pauses: chunks.map((c) => c.pauseMs),
     narrationId: crypto.randomUUID(),
     chunks: chunks.map((c) => ({ sentences: c.sentences.map((x) => ({ id: x.id, start: x.start, end: x.end })) })),
-    sentenceInfo, sentenceCount: result.sentences.length, chunkCount: chunks.length,
+    sentenceInfo, sentenceCount: sentences.length, chunkCount: chunks.length,
     cur: 0, curSentence: -1, generated: 0, time: 0, duration: 0, userPaused: false, seq: 0,
   }
   await saveSession()
   await broadcast()
+  if (onReader) await highlight(0) // show where reading will begin while the first part is prepared
 
   // Start the server through the helper if it is not running yet (can take minutes the first time).
   const mine = session
@@ -377,7 +491,7 @@ async function skip(dir) {
 async function highlight(id) {
   if (session.curSentence === id) return
   session.curSentence = id
-  await toTab(session.tabId, { type: "mlxa-highlight", id })
+  await toTab(session.tabId, { type: "mlxa-highlight", id: id + (session.idOffset || 0) })
 }
 
 // ---- progress from the player ----

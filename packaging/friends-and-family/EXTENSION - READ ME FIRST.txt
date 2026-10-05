@@ -36,6 +36,11 @@ To use it:
   - Open any article, click the MLX-Audio Reader icon, then "Read this page".
   - Or select some text on a page, right-click it, and choose "Read aloud with MLX-Audio".
   - Use the popup's controls to pause, skip to the next/previous paragraph, or stop.
+  - PDFs: open a PDF in Chrome and click the icon, then "Open PDF reader". A new tab shows
+    the PDF's text. Click any sentence to start reading from that spot (so you never have to
+    listen to a long PDF from the top), or use "Jump to page". PDFs saved on your Mac need one
+    switch: chrome://extensions, MLX-Audio Reader, "Details", then turn on "Allow access to
+    file URLs". (PDFs that are scanned pictures of pages have no text and can't be read.)
 
 You do NOT need to open the MLX-Audio app first: the first time you press "Read" the
 extension starts the speech server by itself (the popup says so; the very first time after

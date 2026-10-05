@@ -198,7 +198,31 @@
     })
 
     if (!sentences.length) return { ok: false, error: "No readable text found on this page." }
-    return { ok: true, mode, title, url: location.href, sentences }
+
+    // The PDF reader page sets window.__mlxaFrom to the spot the user clicked, so reading
+    // can begin at that sentence instead of the top.
+    let startId = 0
+    const from = window.__mlxaFrom
+    window.__mlxaFrom = null
+    if (from && mode !== "selection") startId = Math.max(0, sentenceIdAt(from.node, from.offset))
+    return { ok: true, mode, title, url: location.href, sentences, startId }
+  }
+
+  // The id of the first sentence that ends after (node, offset), or -1 if the spot is not in the
+  // extracted text.
+  function sentenceIdAt(node, offset) {
+    for (let id = 0; id < store.length; id++) {
+      const { run } = store[id]
+      const e = run.nodes.find((n) => n.node === node)
+      if (!e) continue
+      const pos = e.start + Math.max(0, offset - e.from)
+      // a later sentence in the same run may be the one containing the spot
+      for (let k = id; k < store.length && store[k].run === run; k++) {
+        if (store[k].end > pos) return k
+      }
+      return id
+    }
+    return -1
   }
 
   // ---- highlighting -------------------------------------------------------
@@ -244,10 +268,15 @@
     if (window.CSS && CSS.highlights) CSS.highlights.delete(HL_NAME)
   }
 
-  const onMessage = (msg) => {
+  const onMessage = (msg, _sender, sendResponse) => {
     if (!msg) return
     if (msg.type === "mlxa-highlight") highlight(msg.id)
     else if (msg.type === "mlxa-clear") clearHighlight()
+    else if (msg.type === "mlxa-extract") {
+      // Only the PDF reader page asks this (other pages are read through executeScript).
+      sendResponse(extract())
+      return true
+    }
   }
   chrome.runtime.onMessage.addListener(onMessage)
 
