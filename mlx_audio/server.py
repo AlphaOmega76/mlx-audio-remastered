@@ -1136,6 +1136,8 @@ async def extract_document_text(file: UploadFile = File(...)):
     try:
         from pypdf import PdfReader
         from pypdf.errors import PyPdfError
+
+        from mlx_audio.pdf_text import page_text
     except ImportError:
         raise HTTPException(
             status_code=501,
@@ -1154,7 +1156,8 @@ async def extract_document_text(file: UploadFile = File(...)):
                 raise HTTPException(
                     status_code=400, detail="PDF is password protected."
                 )
-        pages = [(page.extract_text() or "").strip() for page in reader.pages]
+        # page_text also removes text a PDF draws several times at the same spot
+        pages = [page_text(reader, page) for page in reader.pages]
         return "\n\n".join(p for p in pages if p), pages
 
     try:

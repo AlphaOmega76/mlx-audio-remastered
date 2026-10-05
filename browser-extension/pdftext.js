@@ -12,6 +12,9 @@
 //   * a running header or footer (the same line, apart from its numbers, at the top or bottom of
 //     most pages) is dropped
 //   * ligatures such as "ﬁ" are turned into plain letters, which the voice would stumble on
+//   * junk characters (U+FFFD) and dot leaders ("Chapter 1 ..........  38") are removed
+//   * a line that is just one phrase twice ("Rules of the Harbour  Rules of the Harbour") is collapsed,
+//     and a word broken after 1-3 letters at the end of a line ("Dw" / "arves") is joined
 
 const SENTENCE_END = /[.!?:;…]["'”’)\]]*$/
 const PAGE_NUMBER = /^(?:page\s+)?\d{1,4}(?:\s*(?:of|\/)\s*\d{1,4})?$/i
@@ -22,18 +25,29 @@ function percentile(values, p) {
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]
 }
 
-function join(prev, next) {
-  if (/[A-Za-z]-$/.test(prev) && /^[a-z]/.test(next)) return prev.slice(0, -1) + next
+function join(prev, next, lastLen) {
+  // a word hyphenated at the end of the line, with or without a space before the hyphen ("fam -")
+  if (/[A-Za-z] ?-$/.test(prev) && /^[a-z]/.test(next)) return prev.replace(/ ?-$/, "") + next
+  // a word cut after 1-3 letters on a line of its own ("Dw" / "arves", from drop caps and kerning)
+  if (lastLen <= 3 && /[A-Za-z]$/.test(prev) && /^[a-z]/.test(next)) return prev + next
   return prev + " " + next
 }
 
 const EDGE = 2 // lines at the top and bottom of a page that may be a running header or footer
 
+// "A A" or "AA" (A at least 10 characters) -> "A": some PDFs draw a phrase twice. Shorter repeats
+// are left alone because they can be real ("Bora Bora").
+const collapseRepeat = (line) => {
+  const m = /^(.{10,}?)\s*\1$/.exec(line)
+  return m ? m[1] : line
+}
+
 const cleanLines = (text) =>
   String(text || "")
     .normalize("NFKC")
     .split(/\r?\n/)
-    .map((l) => l.replace(/\s+/g, " ").trim())
+    .map((l) => l.replace(/\uFFFD+/g, " ").replace(/[.\u2026]{4,}/g, " ").replace(/\s+/g, " ").trim())
+    .map(collapseRepeat)
 
 // A line with its digits blanked, so "Report 2/6" and "Report 3/6" count as the same line.
 const shape = (line) => line.replace(/\d+/g, "#")
@@ -84,7 +98,7 @@ export function paragraphsOfPage(text, drop = new Set()) {
       const heading = lastLen < 0.5 * full && lastLen < 70 && !endsSentence && /^[A-Z0-9]/.test(line)
       if ((endsSentence && shortLine) || heading) flush()
     }
-    cur = cur ? join(cur, line) : line
+    cur = cur ? join(cur, line, lastLen) : line
     lastLen = line.length
   }
   flush()

@@ -78,3 +78,18 @@ def test_running_header_and_footer_are_dropped_and_empty_pages_skipped():
 def test_few_pages_keep_their_first_and_last_lines():
     got = pages(["Title line\nBody one.", "Title line\nBody two."])  # only two pages: nothing is "running"
     assert "Title line" in got[0]["paragraphs"][0]
+
+
+def test_junk_dot_leaders_and_repeated_phrases_are_cleaned():
+    text = "Rules of the Harbour  Rules of the Harbour\nChapter 1 ����� 38\nDw\narves ........ 44\nBora Bora"
+    got = paragraphs(text)
+    flat = " | ".join(got)
+    assert "Rules of the Harbour" in flat and "Harbour Rules" not in flat and flat.count("Rules of the Harbour") == 1, got
+    assert "�" not in flat and "..." not in flat, got
+    assert "Dwarves" in flat, got
+    assert "Bora Bora" in flat  # a short repeat can be real, so it is kept
+
+
+def test_hyphenation_with_a_space_before_the_hyphen_is_repaired():
+    got = paragraphs("The humans of Eredane were once a proud and uni -\nfied people who shared a fam -\nily.")
+    assert got == ["The humans of Eredane were once a proud and unified people who shared a family."], got
