@@ -3,10 +3,10 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, Upload } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, TextCursorInput, Upload } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { getApiUrl } from "@/utils/api"
-import { splitIntoChunks } from "@/utils/chunking"
+import { sentenceStart, splitIntoChunks } from "@/utils/chunking"
 import { VoiceSelection } from "@/components/voice-selection"
 
 // ---- Kokoro voices -------------------------------------------------------------------
@@ -194,6 +194,9 @@ export default function SpeechSynthesis() {
   const [progress, setProgress] = useState(0)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  // Where the cursor or selection is in the text box (kept only to label the "Read from here" button)
+  const [selection, setSelection] = useState({ start: 0, end: 0 })
   // Chunked playback state (refs so the audio event handlers never go stale)
   const chunksRef = useRef<AudioChunk[]>([])
   const currentIdxRef = useRef(0)
@@ -332,7 +335,7 @@ export default function SpeechSynthesis() {
     const audio = audioRef.current
     if (!audio || chunksRef.current.length === 0) {
       // Nothing generated yet: generate first.
-      handleGenerate()
+      void handleGenerate()
       return
     }
 
@@ -389,10 +392,12 @@ export default function SpeechSynthesis() {
     }
   }
 
-  const handleGenerate = async () => {
+  // Generates speech for the whole text, or for `range` of it (the "Read from here" button).
+  const handleGenerate = async (range?: { start: number; end: number; selected?: boolean }) => {
     if (!audioRef.current || generatingRef.current) return
 
-    const parts = splitIntoChunks(text)
+    const input = range ? text.slice(range.start, range.end) : text
+    const parts = splitIntoChunks(input)
     const narrationId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
     if (parts.length === 0) {
       setMessage({ type: "error", text: "There is no text to convert to speech." })
@@ -409,7 +414,16 @@ export default function SpeechSynthesis() {
     wantPlayRef.current = true
     generatingRef.current = true
     setIsPlaying(false)
-    setMessage(null)
+    // Say where reading starts, so it is clear the beginning was skipped on purpose
+    const lead = input.trimStart()
+    setMessage(
+      range && parts.length > 0 && (range.start > 0 || range.end < text.length)
+        ? {
+            type: "info",
+            text: `Reading ${range.selected ? "the selection" : "from"} \u201c${lead.slice(0, 50).replace(/\s+/g, " ")}${lead.length > 50 ? "\u2026" : ""}\u201d`,
+          }
+        : null
+    )
     setCurrentTime("00:00")
     setDuration("00:00")
     setProgress(0)
@@ -484,6 +498,20 @@ export default function SpeechSynthesis() {
         }
       }
     }
+  }
+
+  const syncSelection = (e: React.SyntheticEvent<HTMLTextAreaElement>) =>
+    setSelection({ start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd })
+
+  // "Read from here": reads the selected passage if some text is selected, otherwise from the start of
+  // the sentence the cursor is in to the end. Made for long texts such as PDFs, so you do not have to
+  // listen to everything before the part you want.
+  const handleReadFromHere = () => {
+    const el = textareaRef.current
+    if (!el) return
+    const { selectionStart, selectionEnd } = el
+    if (selectionEnd > selectionStart) handleGenerate({ start: selectionStart, end: selectionEnd, selected: true })
+    else handleGenerate({ start: sentenceStart(text, selectionStart), end: text.length })
   }
 
   const handleStop = () => {
@@ -598,7 +626,7 @@ export default function SpeechSynthesis() {
         type: "info",
         text: `Loaded ${pdf.name} (${data.pages} ${data.pages === 1 ? "page" : "pages"}${
           files.length > 1 ? "; only the first PDF was used" : ""
-        }). Review the text, then click Generate.`,
+        }). Click Generate to read it all, or click in the text where you want to start and press Read from here.`,
       })
     } catch (error) {
       console.error("Error extracting PDF text:", error)
@@ -640,6 +668,10 @@ export default function SpeechSynthesis() {
           )}
           <h1 className="mb-6 text-2xl font-bold">Speech Synthesis</h1>
           <textarea
+            ref={textareaRef}
+            onSelect={syncSelection}
+            onMouseUp={syncSelection}
+            onKeyUp={syncSelection}
             className="min-h-[200px] w-full resize-none rounded-md border border-gray-200 dark:border-gray-700 p-4 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
             value={text}
             onChange={handleTextChange}
@@ -693,13 +725,24 @@ export default function SpeechSynthesis() {
                   Stop
                 </button>
               ) : (
-                <button
-                  className="rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700"
-                  onClick={handleGenerate}
-                >
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Generate
-                </button>
+                <>
+                  <button
+                    className="rounded-md border border-sky-500 dark:border-sky-600 px-3 py-1 text-sm text-sky-600 dark:text-sky-400 flex items-center hover:bg-sky-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={handleReadFromHere}
+                    disabled={!text.trim()}
+                    title="Click in the text where you want to start (or select a passage), then press this. Without a selection it reads from the start of that sentence to the end."
+                  >
+                    <TextCursorInput className="h-4 w-4 mr-1" />
+                    {selection.end > selection.start ? "Read selection" : "Read from here"}
+                  </button>
+                  <button
+                    className="rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700"
+                    onClick={() => handleGenerate()}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Generate
+                  </button>
+                </>
               )}
             </div>
           </div>

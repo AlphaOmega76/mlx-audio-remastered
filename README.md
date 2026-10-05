@@ -28,7 +28,8 @@ Everything runs on your own Mac. Nothing you type or read is sent anywhere.
   practice, with a **voice picker** for its American and British English voices (your choice is
   remembered); Qwen3-TTS is still available from the model menu.
 - **One address for everything.** The web interface is served by the same server that does the speech,
-  with PDF drag-and-drop, chunk-by-chunk playback and WAV download.
+  with PDF drag-and-drop, a "Read from here" button (start from the sentence you click in a long
+  text, or read just a selected passage), chunk-by-chunk playback and WAV download.
 
 ## Install (the easy way)
 

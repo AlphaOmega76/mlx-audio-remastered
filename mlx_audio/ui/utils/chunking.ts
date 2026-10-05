@@ -85,3 +85,19 @@ export function splitIntoChunks(raw: string): Chunk[] {
   if (chunks.length) chunks[chunks.length - 1].pauseMs = 0 // nothing follows the last chunk
   return chunks
 }
+
+/**
+ * Where reading should begin when the user puts the cursor at `pos`: the start of the sentence the
+ * cursor is in, so speech never starts in the middle of a word or sentence. Looks back at most 2000
+ * characters; a "sentence" that long without punctuation starts exactly at the cursor instead.
+ */
+export function sentenceStart(text: string, pos: number): number {
+  const end = Math.max(0, Math.min(pos, text.length))
+  const from = Math.max(0, end - 2000)
+  let start = -1
+  for (const m of text.slice(from, end).matchAll(/(?:[.!?\u2026]["'\u201d\u2019)\]]*\s+|\n+)/g)) {
+    start = from + (m.index ?? 0) + m[0].length
+  }
+  if (start >= 0) return start
+  return from === 0 ? 0 : end
+}
