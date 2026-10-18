@@ -132,3 +132,16 @@ def test_processing_errors_never_fail_the_request():
         assert request.done and len(request.emitted) == 1  # fell back to the raw audio
     finally:
         server.polish_audio = original
+
+
+def test_kokoro_speed_is_split_between_model_and_stretch():
+    kokoro = type("K", (), {})()
+    kokoro.__class__.__module__ = "mlx_audio.tts.models.kokoro.kokoro"
+    other = FakeModel("qwen3_tts", [])
+    split = TTSExecutionAdapter._split_speed
+    assert split(kokoro, 1.0) == (1.0, 1.0)
+    assert split(kokoro, 1.1) == (1.1, 1.0)  # small changes stay with the model
+    model_speed, extra = split(kokoro, 1.65)
+    assert model_speed == 1.1 and abs(model_speed * extra - 1.65) < 1e-9
+    assert split(other, 1.5) == (1.5, 1.0)  # other models are untouched
+    assert split(kokoro, None) == (1.0, 1.0)

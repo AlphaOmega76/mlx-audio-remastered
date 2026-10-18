@@ -632,6 +632,18 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
 
     # Models whose generate() accepts ``speed`` but does not act on it.
     _SPEED_IGNORED_BY = {"qwen3_tts"}
+    # Kokoro speeds up by shortening each sound inside the model, which slurs speech and clips
+    # word endings above ~1.2x. Up to this speed the model does it; beyond it the model is asked
+    # for this speed and the rest is applied afterwards by time-stretching (pitch-preserving).
+    _KOKORO_NATIVE_SPEED_CAP = 1.1
+
+    @classmethod
+    def _split_speed(cls, model, speed) -> tuple[float, float]:
+        """(speed to ask the model for, extra speed-up to apply to its audio afterwards)."""
+        speed = float(speed or 1.0)
+        if "kokoro" in type(model).__module__ and speed > cls._KOKORO_NATIVE_SPEED_CAP:
+            return cls._KOKORO_NATIVE_SPEED_CAP, speed / cls._KOKORO_NATIVE_SPEED_CAP
+        return speed, 1.0
     _MAX_RUNAWAY_RETRIES = 2
 
     def _polish(
@@ -646,6 +658,9 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
             model = self._get_model_for_request(request)
             speed_supported = getattr(model, "model_type", None) not in self._SPEED_IGNORED_BY
             speed = speech_request.speed or 1.0
+            _, extra = self._split_speed(model, speed)
+            if extra > 1.0:  # Kokoro beyond its comfortable speed: stretch the rest ourselves
+                speed, speed_supported = extra, False
             wanted = (
                 speech_request.trim_silence
                 or speech_request.max_pause_ms
@@ -698,7 +713,7 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
         sample_rate = None
         generate_kwargs = {
             "voice": speech_request.voice,
-            "speed": speech_request.speed,
+            "speed": self._split_speed(model, speech_request.speed)[0],
             "gender": speech_request.gender,
             "pitch": speech_request.pitch,
             "instruct": speech_request.instruct,
@@ -805,7 +820,7 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
         texts = [request.payload.request.input for request in requests]
         voices = [request.payload.request.voice for request in requests]
         instructs = [request.payload.request.instruct for request in requests]
-        speeds = [request.payload.request.speed for request in requests]
+        speeds = [self._split_speed(model, request.payload.request.speed)[0] for request in requests]
         genders = [request.payload.request.gender for request in requests]
         pitches = [request.payload.request.pitch for request in requests]
         ref_audios = [request.payload.request.ref_audio for request in requests]
