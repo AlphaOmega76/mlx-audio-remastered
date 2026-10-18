@@ -18,6 +18,9 @@ button.primary {
 }
 button.primary:hover { background: #0284c7; }
 button.primary:disabled { background: #93c5fd; cursor: default; }
+.speed { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: #6b7280; font-size: 12px; }
+.speed input { flex: 1; accent-color: #0ea5e9; }
+.speed span { min-width: 3.5ch; text-align: right; }
 .hint { color: #6b7280; margin: 8px 0 0; font-size: 12px; }
 .notice { border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: #fef3c7; color: #92400e; font-size: 12px; }
 .notice.error { background: #fee2e2; color: #991b1b; margin: 10px 0 0; }

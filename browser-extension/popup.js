@@ -113,6 +113,10 @@ $("toggle").onclick = async () => (state = await send({ type: "togglePause" }), 
 $("stop").onclick = async () => (state = await send({ type: "stop" }), render())
 $("prev").onclick = () => send({ type: "skip", dir: -1 })
 $("next").onclick = () => send({ type: "skip", dir: 1 })
+$("speed").oninput = () => {
+  $("speedValue").textContent = `${Number($("speed").value).toFixed(1)}x`
+}
+$("speed").onchange = () => send({ type: "setSpeed", value: Number($("speed").value) })
 $("settings").onclick = () => chrome.runtime.openOptionsPage()
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -127,6 +131,9 @@ async function init() {
   const override = new URLSearchParams(location.search).get("tabId")
   activeTab = override ? await chrome.tabs.get(Number(override)) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]
   state = (await send({ type: "getState" })) || state
+  const { speed } = await getSettings()
+  $("speed").value = speed
+  $("speedValue").textContent = `${Number(speed).toFixed(1)}x`
   render()
   labelReadButton()
   checkServer()

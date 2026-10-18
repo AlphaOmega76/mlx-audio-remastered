@@ -176,22 +176,25 @@ function load(msg) {
   startCurrent()
 }
 
-// A new speed applies from the next part on. Parts already generated ahead of the playhead were made
-// at the old speed, so they are dropped and made again; the part playing now finishes as it is. The
+// A new speed applies at once. Parts already generated (including the one playing) were made at the
+// old speed, so they are dropped and made again; the part playing now is re-made and resumes at the
+// same relative spot, so there is a short wait while it is generated. The
 // server matches each part's pace to the first part of a narration, so the new speed starts a new
 // narration there (otherwise it would be pulled back towards the old pace).
 function setSpeed(value) {
   if (!settings || !(value > 0)) return
   settings = { ...settings, speed: value }
   narrationId = crypto.randomUUID()
-  for (let j = cur + 1; j < urls.length; j++) {
+  const frac = !waiting && audio.duration > 0 ? audio.currentTime / audio.duration : pendingFrac || 0
+  for (let j = cur; j < urls.length; j++) {
     if (urls[j]) {
       URL.revokeObjectURL(urls[j])
       urls[j] = undefined
     }
   }
-  if (ctrl && inflight > cur) ctrl.abort() // the pump carries on with the new settings
-  nudge()
+  if (ctrl && inflight >= cur) ctrl.abort() // the pump carries on with the new settings
+  pendingFrac = frac
+  startCurrent() // nothing to play yet: waits for the re-made part, then resumes (or stays paused)
 }
 
 function seek(index, frac) {
