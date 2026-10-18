@@ -222,6 +222,7 @@ def main():
             shutil.copytree(REPO / "browser-extension", ext)
             manifest = json.loads((ext / "manifest.json").read_text())
             manifest["host_permissions"] += [f"http://localhost:{STUB_PORT}/*"]
+            manifest["permissions"] += ["tabs"]  # automation can't click the icon (activeTab), so let it see tab addresses
             (ext / "manifest.json").write_text(json.dumps(manifest))
 
             cdp = Cdp(Path(tmp) / "profile")
@@ -350,8 +351,12 @@ def main():
             check("pressing Read on a local PDF does not fail", state and state.get("status") in ("idle", None), str(state)[:200])
             check("its reader page opened", wait_for(lambda: target_of("local") is not None, 20))
             rl = target_of("local")
-            ok = wait_for(lambda: cdp.js(rl, "document.querySelectorAll('.page').length") == 3, 40)
-            check("the local PDF's text is shown (downloaded by the reader page)", ok,
+            # The test profile has Chrome's file-access switch on (extensions loaded over CDP get it), so
+            # the page normally loads the PDF itself; with the switch off it asks to choose the file.
+            # The manifest no longer declares file:///*, so only that switch can allow it.
+            ok = wait_for(lambda: cdp.js(rl, "document.querySelectorAll('.page').length") == 3
+                          or "Choose the PDF file" in (cdp.js(rl, "document.getElementById('error').textContent") or ""), 40)
+            check("the local PDF's reader page shows its text, or asks to choose the file", ok,
                   str(cdp.js(rl, "document.getElementById('error').textContent")))
 
             # ---- a PDF with no text ----

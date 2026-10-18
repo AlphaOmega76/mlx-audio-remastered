@@ -181,11 +181,9 @@ async function loadFromAddress(src, title) {
     if (!res.ok) return fail(`Could not download the PDF (error ${res.status}). You can choose the file instead.`)
     bytes = await res.arrayBuffer()
   } catch {
-    const local = src.startsWith("file:")
-    const blocked = local && !(await chrome.extension.isAllowedFileSchemeAccess())
     return fail(
-      blocked
-        ? "Chrome has not allowed this extension to open files on your Mac. Open chrome://extensions, choose MLX-Audio Reader, Details, and turn on \u201cAllow access to file URLs\u201d, then reload this page. Or choose the file below."
+      src.startsWith("file:")
+        ? "Chrome does not let extensions open files on your Mac by themselves. Choose the PDF file below (or drop it on this page)."
         : "Could not download the PDF. You can choose the file instead."
     )
   }

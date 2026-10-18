@@ -38,10 +38,9 @@ To use it:
   - Use the popup's controls to pause, skip to the next/previous paragraph, or stop.
   - PDFs: open a PDF in Chrome and click the icon, then "Open PDF reader". A new tab shows
     the PDF's text. Click any sentence to start reading from that spot (so you never have to
-    listen to a long PDF from the top), or use "Jump to page". PDFs saved on your Mac need one
-    switch: chrome://extensions, MLX-Audio Reader, "Details", then turn on "Allow access to
-    file URLs". If a PDF ever won't load, the reader tab has a "Choose the PDF file" button
-    that always works. (PDFs that are scanned pictures of pages have no text and can't be read.)
+    listen to a long PDF from the top), or use "Jump to page". For a PDF saved on your Mac the
+    reader tab asks you to press "Choose the PDF file" (or drop the file on the page); that
+    button also works whenever a PDF won't load by itself. (PDFs that are scanned pictures of pages have no text and can't be read.)
 
 You do NOT need to open the MLX-Audio app first: the first time you press "Read" the
 extension starts the speech server by itself (the popup says so; the very first time after

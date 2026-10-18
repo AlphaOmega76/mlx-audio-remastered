@@ -40,12 +40,11 @@ work through the extension's own **PDF reader** page:
    the options page) applies from the next part on: parts already prepared are made again at the
    new speed, and the part playing finishes as it is. The sentence being spoken is highlighted, and the
    popup's controls (and the same controls on the reader page) work as on any web page.
-3. PDFs saved on your Mac (`file://`) need Chrome's switch once: `chrome://extensions` →
-   MLX-Audio Reader → Details → **Allow access to file URLs** (the manifest declares `file:///*`,
-   which is what makes the switch appear). The reader page says so if it is off. If a download
-   fails for any reason, **Choose the PDF file…** (or dropping the file on the page) always works.
-   The download happens on the reader *page* because Chrome does not let the background worker
-   read local files.
+3. PDFs saved on your Mac (`file://`): the extension does not declare `file:///*` (the Chrome Web
+   Store reviews that permission strictly), so the reader page asks you to **Choose the PDF file…**
+   (or drop the file on the page) once per PDF. The same button is the fallback if a web PDF
+   fails to download. The download happens on the reader *page* because Chrome does not let the
+   background worker read files.
 
 Some PDFs draw every line of text two or three times at the same spot (an outline copy under a
 filled copy), which made the speech repeat every sentence. The server (`mlx_audio/pdf_text.py`)
