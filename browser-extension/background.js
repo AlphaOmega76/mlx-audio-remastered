@@ -252,7 +252,8 @@ async function closeOffscreen() {
 
 // ---- tab helpers ----
 
-const toTab = (tabId, msg) => chrome.tabs.sendMessage(tabId, msg).catch(() => {})
+const toTab = (tabId, msg, frameId) =>
+  chrome.tabs.sendMessage(tabId, msg, frameId ? { frameId } : {}).catch(() => {})
 
 async function fail(message) {
   toPlayer({ type: "stop" })
@@ -314,13 +315,23 @@ async function start(tabId) {
   if (tab && !onReader && (await isPdfTab(tab))) return openPdfReader(tab)
 
   let result
+  let frameId = 0
   try {
     if (onReader) {
       // content.js is already part of the reader page; it answers for its own text.
       result = await chrome.tabs.sendMessage(tabId, { type: "mlxa-extract" })
     } else {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["vendor/Readability.js", "content.js"] })
-      ;[{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.__mlxa.extract() })
+      // Some sites (e-textbooks) put the text in an iframe, so read every frame and use the one
+      // with the most text; highlights are then sent to that frame only.
+      const target = { tabId, allFrames: true }
+      await chrome.scripting.executeScript({ target, files: ["vendor/Readability.js", "content.js"] })
+      const all = await chrome.scripting.executeScript({ target, func: () => window.__mlxa.extract() })
+      const size = (r) => (r && r.ok ? r.sentences.reduce((n, x) => n + (x.text ? x.text.length : x.end - x.start), 0) : -1)
+      let best = null
+      for (const r of all) if (r.result && (!best || size(r.result) > size(best.result))) best = r
+      if (!best) throw new Error("no frame")
+      result = best.result
+      frameId = best.frameId
     }
   } catch (e) {
     return fail("This page can't be read (Chrome blocks extensions on it).")
@@ -338,7 +349,7 @@ async function start(tabId) {
 
   const settings = await getSettings()
   session = {
-    tabId, title: result.title, url: result.url, mode: onReader ? "pdf" : result.mode, idOffset: startId,
+    tabId, frameId, title: result.title, url: result.url, mode: onReader ? "pdf" : result.mode, idOffset: startId,
     status: "loading", error: null,
     texts: chunks.map((c) => c.text),
     pauses: chunks.map((c) => c.pauseMs),
@@ -429,7 +440,7 @@ async function skip(dir) {
 async function highlight(id) {
   if (session.curSentence === id) return
   session.curSentence = id
-  await toTab(session.tabId, { type: "mlxa-highlight", id: id + (session.idOffset || 0) })
+  await toTab(session.tabId, { type: "mlxa-highlight", id: id + (session.idOffset || 0) }, session.frameId)
 }
 
 // ---- progress from the player ----
