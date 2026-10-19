@@ -178,3 +178,33 @@ def test_extracted_pdf_text_comes_out_as_paragraphs():
     reader = PdfReader(io.BytesIO(_pdf(content)))
     text = format_text(build_pages([page_text(reader, reader.pages[0])]))
     assert text.count("\n\n") == 1 and "\n" not in text.replace("\n\n", ""), repr(text)
+
+
+# ---- broken headings: spaced-out letters, small-caps case, word halves ----
+
+def test_spaced_out_capitals_are_joined():
+    from mlx_audio.pdf_text import fix_broken_words
+
+    assert fix_broken_words("C H A P T E R 1") == "CHAPTER 1"
+    assert fix_broken_words("A S H E S of the Past") == "ASHES of the Past"
+    # a short run could be a real abbreviation: left alone
+    assert fix_broken_words("the U S A today") == "the U S A today"
+    assert fix_broken_words("a b c") == "a b c"
+
+
+def test_small_caps_case_and_word_halves_are_repaired():
+    from mlx_audio.pdf_text import _words, fix_broken_words
+
+    if not _words():
+        return  # no word list on this machine: only the capitals rule applies
+    assert fix_broken_words("the captain oF the ship, tHis hisTory") == "the captain of the ship, this history"
+    assert fix_broken_words("The caP tor was here") == "The captor was here"
+    assert fix_broken_words("Sec tion 2 and Hy drogen") == "Section 2 and Hydrogen"
+    assert fix_broken_words("C APTOR said") == "CAPTOR said"
+
+
+def test_real_text_is_left_alone():
+    from mlx_audio.pdf_text import fix_broken_words
+
+    for text in ("He bought an iPhone in a b c", "in to the room", "Black eyes and greens and browns", "It has an end, of tens"):
+        assert fix_broken_words(text) == text, text

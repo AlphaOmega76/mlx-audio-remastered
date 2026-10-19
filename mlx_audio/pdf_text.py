@@ -15,6 +15,8 @@ letters such as "fi" and "ff".
 
 from __future__ import annotations
 
+import re
+
 # Settings that differ between the copies of one text without changing what or where it is.
 _STYLE_OPS = {
     "CS", "cs", "SCN", "scn", "SC", "sc", "G", "g", "RG", "rg", "K", "k",
@@ -112,6 +114,160 @@ def remove_repeated_text(reader, page) -> int:
     return total
 
 
+# ---- broken words -------------------------------------------------------------------------------
+# Headings and titles are often set in small caps or with spaced-out letters, which a PDF stores as
+# separate pieces: "C H A P T E R", "tHis", "caP tor". Spoken as they are, they come out letter by
+# letter or as two half words. These rules put them back together. They need a word list (macOS
+# ships /usr/share/dict/words); without one only the spaced-out capitals are joined.
+
+_WORD_FILES = ("/usr/share/dict/words", "/usr/dict/words")
+_words_cache: set[str] | None = None
+_TOKEN = re.compile(r"^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$")
+_ODD_CASE = re.compile(r"[a-z][A-Z]")
+
+
+def _words() -> set[str]:
+    global _words_cache
+    if _words_cache is None:
+        found: set[str] = set()
+        for path in _WORD_FILES:
+            try:
+                with open(path, encoding="utf-8", errors="ignore") as f:
+                    found = {w.strip().lower() for w in f if w.strip().isalpha()}
+                break
+            except OSError:
+                continue
+        # single letters other than "a" and "i" are not words, whatever the list says
+        found -= set("bcdefghjklmnopqrstuvwxyz")
+        _words_cache = found
+    return _words_cache
+
+
+# Very common words: a word list lacks some (has, is...), and a split next to one of these is far
+# more likely two real words than a broken one ("tem in" is not "temin").
+_COMMON = set(
+    "a an and are as at be but by can do for from had has have he her his i if in is it its me my "
+    "no not of on or our she so than that the their them then there they this to up us was we were "
+    "what when which who will with would you your".split()
+)
+
+
+def _known(w: str, words: set[str]) -> bool:
+    w = w.lower()
+    if w in words or w in _COMMON:
+        return True
+    for suffix in ("s", "es", "ed", "d", "ing", "ly", "er"):
+        if w.endswith(suffix) and len(w) > len(suffix) + 2 and w[: -len(suffix)] in words:
+            return True
+    return False
+
+
+def _segment(word: str, words: set[str]) -> list[str] | None:
+    """Split a lowercase letter string into the fewest dictionary words, or None."""
+    best: list[list[str] | None] = [None] * (len(word) + 1)
+    best[0] = []
+    for end in range(1, len(word) + 1):
+        for start in range(end):
+            head = best[start]
+            piece = word[start:end]
+            if head is not None and piece in words and (len(piece) > 1 or piece in ("a", "i")):
+                if best[end] is None or len(head) + 1 < len(best[end]):
+                    best[end] = head + [piece]
+    return best[len(word)]
+
+
+def _tidy_case(token: str) -> str:
+    """A word with capitals in odd places (small caps) -> all lower case, or a leading capital."""
+    if token.isupper() or token.islower():
+        return token
+    if token[0].isupper() and token[1:].islower():
+        return token
+    return token[0] + token[1:].lower() if token[0].isupper() and token[1:].lower() != token[1:] and token[1].islower() else token.lower()
+
+
+def fix_broken_words(text: str) -> str:
+    """Join spaced-out letters and word halves, and fix small-caps case, line by line."""
+    words = _words()
+    return "\n".join(_fix_line(line, words) for line in (text or "").split("\n"))
+
+
+def _fix_line(line: str, words: set[str]) -> str:
+    if " " not in line:
+        return _fix_case_tokens([line], words)[0] if words else line
+    parts = [_TOKEN.match(t) for t in line.split(" ")]
+    toks = line.split(" ")
+    out: list[str] = []
+    i = 0
+    while i < len(toks):
+        # a run of single capital letters: C H A P T E R
+        j = i
+        while j < len(toks) and parts[j] and len(parts[j].group(2)) == 1 and not parts[j].group(1):
+            j += 1
+            if parts[j - 1].group(3):  # punctuation ends the run
+                break
+        run = toks[i:j]
+        letters = "".join(parts[k].group(2) for k in range(i, j)) if j > i else ""
+        if len(run) >= 3 and (letters.isupper() or letters.islower()):
+            low = letters.lower()
+            tail = parts[j - 1].group(3)
+            joined = None
+            if words and low in words:
+                joined = letters
+            elif letters.isupper():
+                seg = _segment(low, words) if words and len(low) >= 6 else None
+                if seg and len(seg) <= 4:
+                    joined = " ".join(w.upper() for w in seg)
+                elif len(run) >= 4:
+                    joined = letters
+            if joined is not None:
+                out.append(joined + tail)
+                i = j
+                continue
+        out.append(toks[i])
+        i += 1
+    if words:
+        out = _merge_halves(out, words)
+        out = _fix_case_tokens(out, words)
+    return " ".join(out)
+
+
+def _merge_halves(toks: list[str], words: set[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(toks):
+        if i + 1 < len(toks):
+            a, b = _TOKEN.match(toks[i]), _TOKEN.match(toks[i + 1])
+            if a and b and not a.group(3) and not b.group(1):
+                x, y = a.group(2), b.group(2)
+                joined = (x + y).lower()
+                odd = bool(_ODD_CASE.search(x) or _ODD_CASE.search(y))
+                alone = _known(x, words) and _known(y, words)
+                lone = len(x) == 1 or len(y) == 1
+                if lone:  # a lone letter joins only inside capitals: C APTOR
+                    ok = x.isupper() and y.isupper() and len(x) + len(y) >= 4
+                else:
+                    common = x.lower() in _COMMON or y.lower() in _COMMON
+                    caps = (len(x) > 1 and x.isupper()) or (len(y) > 1 and y.isupper())
+                    ok = odd or not (alone or common or caps)
+                if joined in words and ok:
+                    out.append(a.group(1) + _tidy_case(x + y) + b.group(3))
+                    i += 2
+                    continue
+        out.append(toks[i])
+        i += 1
+    return out
+
+
+def _fix_case_tokens(toks: list[str], words: set[str]) -> list[str]:
+    out = []
+    for t in toks:
+        m = _TOKEN.match(t)
+        if m and _ODD_CASE.search(m.group(2)) and m.group(2).lower() in words:
+            t = m.group(1) + _tidy_case(m.group(2)) + m.group(3)
+        out.append(t)
+    return out
+
+
 def page_text(reader, page) -> str:
     """The text of one page, with repeated drawing removed. Never fails: on any problem the page's
     text is extracted as it is."""
@@ -119,7 +275,10 @@ def page_text(reader, page) -> str:
         remove_repeated_text(reader, page)
     except Exception:
         pass
-    return (page.extract_text() or "").strip()
+    try:
+        return fix_broken_words((page.extract_text() or "").strip())
+    except Exception:
+        return (page.extract_text() or "").strip()
 
 
 # ---- paragraphs --------------------------------------------------------------------------------
