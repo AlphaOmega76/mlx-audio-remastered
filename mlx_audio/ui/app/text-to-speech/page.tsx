@@ -2,11 +2,12 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight, Download, Play, Pause, RefreshCw, Square, TextCursorInput, Upload } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { getApiUrl } from "@/utils/api"
-import { sentenceStart, splitIntoChunks } from "@/utils/chunking"
+import { sentenceStart, splitIntoChunks, splitSentences, type Chunk } from "@/utils/chunking"
+import { PdfViewer } from "@/components/pdf-viewer"
 import { VoiceSelection } from "@/components/voice-selection"
 
 // ---- Kokoro voices -------------------------------------------------------------------
@@ -189,6 +190,15 @@ export default function SpeechSynthesis() {
   const [isDragging, setIsDragging] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const [pdfName, setPdfName] = useState<string | null>(null)
+  // The dropped PDF itself, shown as pages with the spoken sentence highlighted
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [showPages, setShowPages] = useState(true)
+  const [activeSentence, setActiveSentence] = useState(-1)
+  const sentences = useMemo(() => (pdfFile ? splitSentences(text) : []), [pdfFile, text])
+  const sentencesRef = useRef<string[]>([])
+  sentencesRef.current = sentences
+  const partsRef = useRef<Chunk[]>([]) // the parts being spoken, with the sentences each one covers
+  const viewerShown = !!pdfFile && showPages
   const [message, setMessage] = useState<{ type: "error" | "info"; text: string } | null>(null)
   const [genProgress, setGenProgress] = useState({ done: 0, total: 0 })
   const [progress, setProgress] = useState(0)
@@ -216,6 +226,17 @@ export default function SpeechSynthesis() {
     setCurrentTime(formatTime(elapsed))
     setDuration(formatTime(total))
     setProgress(total > 0 ? Math.min(1, elapsed / total) : 0)
+    // Which sentence is being spoken: the part is known, the place inside it is estimated from the
+    // audio position, with longer sentences taking longer
+    const part = partsRef.current[currentIdxRef.current]
+    if (part && audio && audio.duration > 0) {
+      const lens = sentencesRef.current.slice(part.first, part.last + 1).map((x) => x.length + 1)
+      const sum = lens.reduce((a, b) => a + b, 0)
+      let target = Math.min(0.999, audio.currentTime / audio.duration) * sum
+      let k = 0
+      while (k < lens.length - 1 && target >= lens[k]) target -= lens[k++]
+      setActiveSentence(part.first + k)
+    }
   }
 
   const loadChunk = (idx: number) => {
@@ -240,6 +261,7 @@ export default function SpeechSynthesis() {
     if (chunksRef.current.length > 0) loadChunk(0)
     setCurrentTime("00:00")
     setProgress(0)
+    setActiveSentence(-1)
   }
 
   const advanceIfWaiting = () => {
@@ -393,11 +415,22 @@ export default function SpeechSynthesis() {
   }
 
   // Generates speech for the whole text, or for `range` of it (the "Read from here" button).
-  const handleGenerate = async (range?: { start: number; end: number; selected?: boolean }) => {
-    if (!audioRef.current || generatingRef.current) return
+  // `fromSentence` starts at a sentence clicked on the PDF pages.
+  const handleGenerate = async (range?: { start: number; end: number; selected?: boolean }, fromSentence = 0) => {
+    if (!audioRef.current) return
+    // Already generating (e.g. a sentence was clicked while the rest of the book is still being
+    // made): drop that run and start the new one. The old run notices it was replaced and quits.
+    if (generatingRef.current) {
+      abortRef.current?.abort()
+      generatingRef.current = false
+    }
 
     const input = range ? text.slice(range.start, range.end) : text
-    const parts = splitIntoChunks(input)
+    const parts = splitIntoChunks(input, fromSentence)
+    // Sentence numbers are counted from the start of the whole text, for the PDF highlight
+    const base = range && pdfFile ? splitSentences(text.slice(0, range.start)).length : 0
+    partsRef.current = parts.map((x) => ({ ...x, first: x.first + base, last: x.last + base }))
+    setActiveSentence(-1)
     const narrationId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
     if (parts.length === 0) {
       setMessage({ type: "error", text: "There is no text to convert to speech." })
@@ -415,9 +448,11 @@ export default function SpeechSynthesis() {
     generatingRef.current = true
     setIsPlaying(false)
     // Say where reading starts, so it is clear the beginning was skipped on purpose
-    const lead = input.trimStart()
+    const lead = fromSentence > 0 ? (sentencesRef.current[fromSentence] ?? "") : input.trimStart()
     setMessage(
-      range && parts.length > 0 && (range.start > 0 || range.end < text.length)
+      fromSentence > 0
+        ? { type: "info", text: `Reading from \u201c${lead.slice(0, 50)}${lead.length > 50 ? "\u2026" : ""}\u201d` }
+        : range && parts.length > 0 && (range.start > 0 || range.end < text.length)
         ? {
             type: "info",
             text: `Reading ${range.selected ? "the selection" : "from"} \u201c${lead.slice(0, 50).replace(/\s+/g, " ")}${lead.length > 50 ? "\u2026" : ""}\u201d`,
@@ -448,6 +483,11 @@ export default function SpeechSynthesis() {
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const chunkDuration = await getBlobDuration(url)
+        if (controller.signal.aborted) {
+          // Replaced by a newer run while this chunk was being measured
+          URL.revokeObjectURL(url)
+          return
+        }
         chunksRef.current.push({ blob, url, duration: chunkDuration })
         setGenProgress({ done: i + 1, total: parts.length })
         setDuration(formatTime(totalDuration()))
@@ -622,11 +662,14 @@ export default function SpeechSynthesis() {
       const data = await response.json()
       setText(data.text)
       setPdfName(pdf.name)
+      setPdfFile(pdf)
+      setShowPages(true)
+      setActiveSentence(-1)
       setMessage({
         type: "info",
         text: `Loaded ${pdf.name} (${data.pages} ${data.pages === 1 ? "page" : "pages"}${
           files.length > 1 ? "; only the first PDF was used" : ""
-        }). Click Generate to read it all, or click in the text where you want to start and press Read from here.`,
+        }). Click Generate to read it all, or click a sentence on the pages to start there.`,
       })
     } catch (error) {
       console.error("Error extracting PDF text:", error)
@@ -666,13 +709,49 @@ export default function SpeechSynthesis() {
               </span>
             </div>
           )}
-          <h1 className="mb-6 text-2xl font-bold">Speech Synthesis</h1>
+          <div className="mb-6 flex items-center justify-between">
+            <h1 className="text-2xl font-bold">Speech Synthesis</h1>
+            {pdfFile && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="max-w-[16rem] truncate text-gray-500 dark:text-gray-400" title={pdfFile.name}>
+                  {pdfFile.name}
+                </span>
+                <button
+                  className="rounded-md border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  onClick={() => setShowPages(!showPages)}
+                >
+                  {showPages ? "Show text" : "Show PDF pages"}
+                </button>
+                <button
+                  className="rounded-md border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  onClick={() => {
+                    setPdfFile(null)
+                    setActiveSentence(-1)
+                  }}
+                  title="Close the PDF and keep its text in the text box"
+                >
+                  Close PDF
+                </button>
+              </div>
+            )}
+          </div>
+          {viewerShown && pdfFile && (
+            <div className="h-[calc(100vh-17rem)] min-h-[300px]">
+              <PdfViewer
+                file={pdfFile}
+                sentences={sentences}
+                active={activeSentence}
+                onSentenceClick={(i) => void handleGenerate(undefined, i)}
+                onError={(m) => setMessage({ type: "error", text: m })}
+              />
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             onSelect={syncSelection}
             onMouseUp={syncSelection}
             onKeyUp={syncSelection}
-            className="min-h-[200px] w-full resize-none rounded-md border border-gray-200 dark:border-gray-700 p-4 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
+            className={`${viewerShown ? "hidden " : ""}min-h-[200px] w-full resize-none rounded-md border border-gray-200 dark:border-gray-700 p-4 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none`}
             value={text}
             onChange={handleTextChange}
             placeholder="Enter text to convert to speech, or drop a PDF here..."
@@ -726,6 +805,7 @@ export default function SpeechSynthesis() {
                 </button>
               ) : (
                 <>
+                  {!viewerShown && (
                   <button
                     className="rounded-md border border-sky-500 dark:border-sky-600 px-3 py-1 text-sm text-sky-600 dark:text-sky-400 flex items-center hover:bg-sky-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={handleReadFromHere}
@@ -735,6 +815,7 @@ export default function SpeechSynthesis() {
                     <TextCursorInput className="h-4 w-4 mr-1" />
                     {selection.end > selection.start ? "Read selection" : "Read from here"}
                   </button>
+                  )}
                   <button
                     className="rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700"
                     onClick={() => handleGenerate()}
@@ -938,6 +1019,7 @@ export default function SpeechSynthesis() {
           <button
             className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 ml-4"
             onClick={handlePlayPause}
+            data-testid="play-pause"
           >
             {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
           </button>

@@ -29,7 +29,10 @@ Everything runs on your own Mac. Nothing you type or read is sent anywhere.
   remembered); Qwen3-TTS is still available from the model menu.
 - **One address for everything.** The web interface is served by the same server that does the speech,
   with PDF drag-and-drop, a "Read from here" button (start from the sentence you click in a long
-  text, or read just a selected passage), chunk-by-chunk playback and WAV download.
+  text, or read just a selected passage), chunk-by-chunk playback and WAV download. A dropped PDF
+  is shown as its real pages: the sentence being read is highlighted, and clicking a sentence starts
+  reading from there (PDF.js is bundled, nothing is fetched online; "Show text" gives the plain text
+  box back).
 
 ## Install (the easy way)
 
@@ -72,6 +75,7 @@ Tests are plain-assert files under `tests/` (for example `tests/test_audio_polis
 - This is a personal project, tested on macOS in fresh virtual machines and on one real Mac. The
   window app's file pickers, PDF drop and microphone (Realtime speech-to-text) haven't been exercised
   by an automated check, so try those yourself.
+- PDF highlighting finds each sentence on the page by its words, so two-column layouts, hyphenated line ends or odd fonts can highlight the wrong spot or nothing; the speech is not affected. The highlight's start inside a line is estimated, so it can be a few letters off.
 - The Chrome extension is installed manually ("Load unpacked"); it isn't on the Chrome Web Store.
 - With Kokoro, macOS may log a harmless warning about `libespeak-ng` failing to load; unusual words
   are skipped by the phonemizer's fallback. It comes from the Kokoro voice library, not this fork.
