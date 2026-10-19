@@ -8,20 +8,22 @@
 //   * chunks end at paragraph boundaries where possible, where a change in delivery
 //     is natural, and are followed by a longer pause than chunks that end mid-paragraph.
 
-export type Chunk = { text: string; pauseMs: number }
+// `first` and `last` are the numbers (in `splitSentences` order) of the first and last sentence the
+// chunk speaks, so a viewer can show which sentence is being read.
+export type Chunk = { text: string; pauseMs: number; first: number; last: number }
 
 export const CHUNK_RAMP = [220, 350, 500]
 export const CHUNK_MAX = 650
 export const PAUSE_PARAGRAPH_MS = 600
 export const PAUSE_SENTENCE_MS = 200
 
-type Sentence = { text: string; paraStart: boolean; paraEnd: boolean; paraLen: number }
+export type Sentence = { text: string; paraStart: boolean; paraEnd: boolean; paraLen: number }
 
 const limitFor = (index: number) => CHUNK_RAMP[index] ?? CHUNK_MAX
 
 // Paragraphs are separated by blank lines. Single newlines (e.g. line wraps in a PDF)
 // count as spaces, and words hyphenated across a line break are rejoined.
-function toSentences(raw: string): Sentence[] {
+export function toSentences(raw: string): Sentence[] {
   const out: Sentence[] = []
   const paragraphs = raw
     .replace(/\r/g, "")
@@ -59,25 +61,35 @@ function toSentences(raw: string): Sentence[] {
   return out
 }
 
-export function splitIntoChunks(raw: string): Chunk[] {
+/** The sentences of `raw`, in the order the chunks speak them. */
+export const splitSentences = (raw: string): string[] => toSentences(raw).map((s) => s.text)
+
+/** `fromSentence` skips the sentences before it (reading from a sentence the user clicked). */
+export function splitIntoChunks(raw: string, fromSentence = 0): Chunk[] {
   const chunks: Chunk[] = []
   let cur = ""
   let endsParagraph = false
+  let first = 0
+  let last = 0
 
   const flush = () => {
-    if (cur) chunks.push({ text: cur, pauseMs: endsParagraph ? PAUSE_PARAGRAPH_MS : PAUSE_SENTENCE_MS })
+    if (cur) chunks.push({ text: cur, pauseMs: endsParagraph ? PAUSE_PARAGRAPH_MS : PAUSE_SENTENCE_MS, first, last })
     cur = ""
     endsParagraph = false
   }
 
-  for (const s of toSentences(raw)) {
+  const all = toSentences(raw)
+  for (let n = Math.max(0, fromSentence); n < all.length; n++) {
+    const s = all[n]
     const limit = limitFor(chunks.length)
     if (cur && s.paraStart && cur.length + 1 + s.paraLen > limit && cur.length >= 0.4 * limit) {
       flush() // the next paragraph does not fit: break between paragraphs, not inside one
     } else if (cur && cur.length + 1 + s.text.length > limit) {
       flush()
     }
+    if (!cur) first = n
     cur = cur ? `${cur} ${s.text}` : s.text
+    last = n
     endsParagraph = s.paraEnd
   }
   flush()
