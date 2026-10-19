@@ -29,6 +29,13 @@ cd packaging/friends-and-family
 
 Send both zips to your friend, or just the app zip if they don't want the extension.
 
+To publish on GitHub, check the zips for personal paths, then
+`gh release create <tag> --repo AlphaOmega76/mlx-audio-remastered --target main --notes-file <file> <zips>`.
+Releases were numbered `v0.5.7-remastered.1` to `.5`; the next, `v1.0-remastered`, is the first
+"1.0". The package and app versions are still upstream's `0.5.7` (hence the zip name), and the
+extension is `1.0.0`. The Chrome Web Store upload is a different zip, built by
+`../chrome-web-store/build_store_zip.sh`.
+
 ## How the app installer works (so you can debug it)
 
 `install.command`:
@@ -155,7 +162,8 @@ generation does work inside a VM (Kokoro ran fine).
 
 - **Web Store (even "Unlisted")** would make the extension a true one-click "Add to
   Chrome" with no Developer Mode banner — costs a one-time $5 Google developer fee plus a
-  review. Revisit if manual installs prove annoying for people.
+  review. A submission is prepared in `../chrome-web-store/`; the store version still needs this
+  app installed separately.
 - **Signed & notarized app** would remove the Gatekeeper warning on the installer and the
   launcher apps entirely — needs an Apple Developer Program membership ($99/year).
 - Both are meaningful, real costs (money and/or process), which is why this simpler path

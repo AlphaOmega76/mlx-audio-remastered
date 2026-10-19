@@ -20,8 +20,13 @@ Works in Chrome and other Chromium-based browsers (Brave, Edge, Arc).
 - **Toolbar icon:** open any article and click the icon, then **Read this page**. If you have
   text highlighted, the button says **Read selection** and reads just that.
 - **Right-click:** on a page or on selected text, choose **Read aloud with MLX-Audio**.
-- **Controls** (in the popup): pause/resume, previous/next paragraph, stop. Narration keeps
-  playing if you close the popup or switch tabs. It stops when the tab closes or navigates away.
+- **Controls** (in the popup): pause/resume, previous/next paragraph, stop, and a **Speed**
+  slider (0.5x to 2x, the same setting as on the options page). A new speed applies at once: the
+  part being read is made again at the new speed and resumes at the same spot, so there is a short
+  wait. Narration keeps playing if you close the popup or switch tabs. It stops when the tab
+  closes or navigates away.
+- **Pages with text in a frame** (online textbooks and similar): every frame of the page is
+  read and the one with the most text is used; the highlight appears inside that frame.
 - **Settings** (popup → Settings): server address, voice model, voice, speaking style, speed.
   The default is Kokoro (voice `af_heart`); Qwen3-TTS is also selectable, with its own voices
   and a speaking-style instruction (default "calm, measured narrator tone").
@@ -37,8 +42,7 @@ work through the extension's own **PDF reader** page:
    shows it split into pages and paragraphs.
 2. **Click any sentence** to start reading from there. **Read from the start** begins at the top,
    and **Jump to page** scrolls to a page. The **Speed** slider (0.5x to 2x, the same setting as on
-   the options page) applies from the next part on: parts already prepared are made again at the
-   new speed, and the part playing finishes as it is. The sentence being spoken is highlighted, and the
+   the options page) applies at once, as in the popup. The sentence being spoken is highlighted, and the
    popup's controls (and the same controls on the reader page) work as on any web page.
 3. PDFs saved on your Mac (`file://`): the extension does not declare `file:///*` (the Chrome Web
    Store reviews that permission strictly), so the reader page asks you to **Choose the PDF file…**
@@ -107,6 +111,16 @@ Chrome's *native messaging* (`mlx_audio/native_host.py`, registered per browser 
   `docs/guides/web-ui-api-server.md`), so the chunks sound like one continuous reading.
 - Chrome closes that hidden page after 30 seconds without sound (for example a long pause).
   The extension notices and rebuilds it from the saved position when you press Play.
+
+## Publishing to the Chrome Web Store
+
+The extension is version 1.0.0. `packaging/chrome-web-store/` holds what a store submission
+needs: `build_store_zip.sh` (the upload zip: the manifest's dev-only `key` removed), `LISTING.md`
+(listing text, permission justifications, data-use answers, reviewer notes) and `PRIVACY.md` (the
+privacy policy). Keep the same extension ID by pasting the manifest's public key into the
+dashboard's Package tab; the helper (`mlx_audio/native_host.py`) only accepts that ID. Raise
+`version` in `manifest.json` for every store update. Until it is approved, the extension is
+installed with "Load unpacked" as above.
 
 ## Limits
 
