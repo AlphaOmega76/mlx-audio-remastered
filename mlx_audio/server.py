@@ -646,6 +646,13 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
         return speed, 1.0
     _MAX_RUNAWAY_RETRIES = 2
 
+    @staticmethod
+    def _is_kokoro(model) -> bool:
+        """Kokoro is deterministic and its pace follows the text (numbers, URLs and
+        abbreviations read slowly), so neither pace-matching nor runaway retries help it."""
+        return "kokoro" in type(model).__module__
+
+
     def _polish(
         self,
         request: InferenceRequest,
@@ -682,6 +689,7 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
                 loudness_db=speech_request.loudness_db,
                 pause_ms=speech_request.pause_ms,
                 narration_id=speech_request.narration_id,
+                match_pace=not self._is_kokoro(model),
             )
         except Exception as e:  # never fail a request because of post-processing
             print(f"Audio post-processing skipped: {e}")
@@ -767,6 +775,7 @@ class TTSExecutionAdapter(BaseModelExecutionAdapter):
             # would ruin the chunk, so generate it again (sampling is random).
             if (
                 speech_request.narration_id
+                and not self._is_kokoro(model)
                 and retries < self._MAX_RUNAWAY_RETRIES
                 and looks_runaway(
                     concatenated_audio,

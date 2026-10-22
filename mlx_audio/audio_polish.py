@@ -241,6 +241,7 @@ def polish_audio(
     loudness_db: Optional[float] = None,
     pause_ms: int = 0,
     narration_id: Optional[str] = None,
+    match_pace: bool = True,
 ) -> np.ndarray:
     """Apply the requested clean-ups to one generated chunk. Returns float32 mono audio.
 
@@ -258,7 +259,7 @@ def polish_audio(
 
     # pace: match the first chunk of this narration, or apply the requested speed
     factor = 1.0
-    if narration_id:
+    if narration_id and match_pace:
         rate = articulation_rate(x, sample_rate, text)
         if rate is not None:
             ref = _get_ref(narration_id)
