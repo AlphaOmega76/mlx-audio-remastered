@@ -119,7 +119,13 @@ function startCurrent() {
   audio.src = url
   audio.onloadedmetadata = () => {
     if (frac && Number.isFinite(audio.duration)) audio.currentTime = frac * audio.duration
-    if (wantPlay) audio.play().catch((e) => send({ type: "error", message: `Playback blocked: ${e.message}` }))
+    if (wantPlay) {
+      audio.play().catch((e) => {
+        // Skipping quickly loads a newer chunk, which cancels this play(); that is expected.
+        if (e.name === "AbortError") return
+        send({ type: "error", message: `Playback blocked: ${e.message}` })
+      })
+    }
     report(true)
   }
   // free audio well behind the playhead
