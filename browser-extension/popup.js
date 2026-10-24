@@ -42,6 +42,12 @@ function render() {
   $("error").textContent = error
   $("error").classList.toggle("hidden", !error)
 
+  // The server notice was written when the popup opened; once audio is flowing the server is clearly up.
+  if (["playing", "paused", "buffering"].includes(state.status)) {
+    serverOk = true
+    $("server").classList.add("hidden")
+  }
+
   if (state.status === "done") $("hint").textContent = "Finished reading. Click to read the page again."
   $("read").disabled = !serverOk || !readable
 }
