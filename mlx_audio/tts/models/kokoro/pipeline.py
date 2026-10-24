@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from numbers import Number
@@ -13,6 +14,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from huggingface_hub import snapshot_download
 
+from .espeak_patch import use_original_espeak_library
 from .voice import load_voice_tensor
 
 if TYPE_CHECKING:
@@ -42,7 +44,10 @@ def _get_misaki_en() -> Any:
 
 
 def _get_misaki_espeak() -> Any:
-    return _import_misaki_submodule("misaki.espeak")
+    module = _import_misaki_submodule("misaki.espeak")
+    if sys.platform == "darwin":
+        use_original_espeak_library(module)
+    return module
 
 
 def _get_misaki_ja() -> Any:
